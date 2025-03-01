@@ -1,2 +1,2 @@
-# Smart_Digitarl_Receipt_System
+# Smart_Digital_Receipt_System
 Software Engineering Mini Project
