@@ -1,0 +1,11 @@
+Week 1 assignment plan(modify as needed)
+1 March - 5 March :
+1. Decide the Software Model to be followed
+2. Introduction to Research Area, in our case (Vendor Receipt Preservation)
+3. Introduction to Project Topic (Web application for Digital Receipt Management)
+4. Gap Findings - What existing solution is used and gaps in that.
+5. What solution we are offerring,features like Automatic Receipt capture via Merchant QR codes, Optical Character Recognition for Receipt extraction, Categorization and Tagging of receitps, Warranty tracking, search and filter, Reminders and notifications etc.
+6. Submission
+
+
+Schedule - Complete 1,2,3,4 by 3rd March, make a presentation to get more marks, see how existing Open Source solutions work and look into OCR(this is the USP of our application, we must implement this somehow, either using existing libraries / APIs or creating simple working example) Complete steps 4 and 5 by 4th March.
