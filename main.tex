@@ -1,0 +1,265 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{fancyhdr} % For custom headers and footers
+
+% Disable page numbers
+\pagestyle{empty}
+
+% Custom header for all pages except the title page
+\fancypagestyle{main}{
+    \fancyhf{} % Clear all header and footer fields
+    \fancyhead[R]{\small Software Requirement Specification} % Add text to the top right corner
+    \renewcommand{\headrulewidth}{0pt} % Remove the header rule
+}
+\pagestyle{main} % Apply the custom header style
+
+\begin{document}
+
+% Title Page
+\begin{flushright}
+    \rule{16cm}{5pt}\vskip0.5cm % Horizontal line with reduced spacing
+    \begin{bfseries}
+        {\Large SOFTWARE REQUIREMENTS\\ SPECIFICATION}\\
+        \vspace{1.0cm} % Reduced spacing
+        {\large for}\\
+        \vspace{1.0cm} % Reduced spacing
+        {\Large DIGITAL RECEIPT MANAGEMENT SYSTEM}\\
+        \vspace{1.0cm} % Reduced spacing
+        {\large Version 1.0}\\
+        \vspace{1.0cm} % Reduced spacing
+        {\large Prepared by : \\}
+        {\large Tejas Joshi (612203078)\\}
+        {\large Tejas Kolhe (612203097)\\}
+        \vspace{1.0cm} % Reduced spacing
+        {\large Instructor: Prof. Seema Chavan \\}
+        \vspace{1.0cm} % Reduced spacing
+        {\large College Of Engineering Pune\\}
+        \vspace{1.0cm} % Reduced spacing
+        {\large 08 March 2025\\}
+        \vspace{2.2cm}
+    \end{bfseries}
+\end{flushright}
+
+% Table of Contents
+\tableofcontents
+\newpage
+
+% Revision History
+\section*{Revision History}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Name} & \textbf{Date} & \textbf{Reason for Changes} & \textbf{Version} \\
+\hline
+Tejas Joshi & 08 March 2025 & Initial draft & 1.0 \\
+\hline
+\end{tabular}
+
+% Section 1: Introduction
+\section{Introduction}
+\subsection{Purpose}
+This document specifies the requirements for the **Digital Receipt Management System (DRMS)**, a software solution designed to help users scan, store, categorize, and analyze receipts digitally. The system aims to simplify receipt management for individuals and small businesses, providing features such as OCR-based data extraction, automatic receipt capture, expense analytics, and warranty tracking.
+
+\subsection{Document Conventions}
+\begin{itemize}
+    \item \textbf{Bold text} is used for key terms and section headings.
+    \item \textit{Italic text} is used for emphasis.
+    \item Requirements are numbered sequentially (e.g., REQ-1, REQ-2).
+    \item Diagrams are referenced as figures (e.g., Figure 1).
+\end{itemize}
+
+\subsection{Intended Audience and Reading Suggestions}
+This document is intended for:
+\begin{itemize}
+    \item \textbf{Developers}: To understand the system requirements and design the software.
+    \item \textbf{Project Managers}: To plan and track the project's progress.
+    \item \textbf{Testers}: To create test cases based on the requirements.
+    \item \textbf{Users}: To understand the system's capabilities and features.
+\end{itemize}
+Readers should start with the \textbf{Introduction} and \textbf{Overall Description} sections, followed by the \textbf{System Features} and \textbf{Nonfunctional Requirements}.
+
+\subsection{Product Scope}
+The DRMS is a web-based application that allows users to manage receipts digitally. It includes features such as receipt scanning, automatic data extraction, categorization, expense tracking, and warranty reminders. The system aims to improve financial tracking, reduce paper waste, and provide a seamless user experience.
+
+\subsection{References}
+\begin{itemize}
+    \item IEEE Std 830-1998, IEEE Recommended Practice for Software Requirements Specifications.
+    \item \url{https://reactjs.org}
+    \item \url{https://nodejs.org}
+    \item \url{https://www.mongodb.com}
+\end{itemize}
+
+% Section 2: Overall Description
+\section{Overall Description}
+\subsection{Product Perspective}
+The DRMS is a standalone system that integrates with third-party services such as email providers, payment gateways, and cloud storage platforms. It will be accessible via web and mobile interfaces.
+
+\subsection{Product Functions}
+\begin{itemize}
+    \item Receipt scanning and storage using OCR.
+    \item Automatic receipt capture from emails and payment gateways.
+    \item Categorization and tagging of receipts.
+    \item Expense analytics and reporting.
+    \item Warranty tracking with reminders.
+    \item Multi-device access and cloud storage.
+\end{itemize}
+
+\subsection{User Classes and Characteristics}
+\begin{itemize}
+    \item \textbf{Individual Users}: Manage personal receipts and track expenses.
+    \item \textbf{Small Businesses}: Track business expenses and generate tax-ready reports.
+    \item \textbf{Administrators}: Manage system settings and user accounts.
+\end{itemize}
+
+\subsection{Operating Environment}
+\begin{itemize}
+    \item \textbf{Frontend}: Web browsers (Chrome, Firefox, Safari) and mobile devices (iOS, Android).
+    \item \textbf{Backend}: Node.js server hosted on cloud platforms (AWS, Heroku).
+    \item \textbf{Database}: MongoDB hosted on cloud services (MongoDB Atlas).
+\end{itemize}
+
+\subsection{Design and Implementation Constraints}
+\begin{itemize}
+    \item Use of MERN stack (MongoDB, Express.js, React.js, Node.js).
+    \item Integration with third-party OCR APIs (e.g., Google Cloud Vision).
+    \item Compliance with GDPR and other data protection regulations.
+\end{itemize}
+
+\subsection{User Documentation}
+\begin{itemize}
+    \item User manual for receipt scanning and categorization.
+    \item Online help and tutorials for expense tracking and reporting.
+    \item API documentation for developers.
+\end{itemize}
+
+\subsection{Assumptions and Dependencies}
+\begin{itemize}
+    \item Users have access to a smartphone or computer with a camera.
+    \item The system relies on third-party OCR services for data extraction.
+    \item Cloud storage is required for long-term receipt storage.
+\end{itemize}
+
+% Section 3: External Interface Requirements
+\section{External Interface Requirements}
+\subsection{User Interfaces}
+\begin{itemize}
+    \item Intuitive dashboard for viewing and managing receipts.
+    \item Receipt scanning interface with camera integration.
+    \item Search and filter functionality for receipts.
+\end{itemize}
+
+\subsection{Hardware Interfaces}
+\begin{itemize}
+    \item Camera for scanning physical receipts.
+    \item Cloud storage for secure data storage.
+\end{itemize}
+
+\subsection{Software Interfaces}
+\begin{itemize}
+    \item Integration with email providers (e.g., Gmail, Outlook) for automatic receipt capture.
+    \item Integration with payment gateways (e.g., PayPal, Amazon) for digital receipts.
+    \item Integration with OCR APIs (e.g., Google Cloud Vision) for data extraction.
+\end{itemize}
+
+\subsection{Communications Interfaces}
+\begin{itemize}
+    \item HTTPS for secure data transmission.
+    \item RESTful APIs for communication between frontend and backend.
+\end{itemize}
+
+% Section 4: System Features
+\section{System Features}
+\subsection{Receipt Scanning and Storage}
+\subsubsection{Description and Priority}
+This feature allows users to scan physical receipts using a camera and store them digitally. \textbf{Priority: High}.
+
+\subsubsection{Stimulus/Response Sequences}
+\begin{itemize}
+    \item User opens the app and selects "Scan Receipt."
+    \item System captures the receipt image and processes it using OCR.
+    \item System extracts key data (merchant, amount, date) and stores it in the database.
+\end{itemize}
+
+\subsubsection{Functional Requirements}
+\begin{itemize}
+    \item \textbf{REQ-1}: The system must support receipt scanning via camera.
+    \item \textbf{REQ-2}: The system must use OCR to extract data from scanned receipts.
+    \item \textbf{REQ-3}: The system must store receipts securely in the cloud.
+\end{itemize}
+
+\subsection{Expense Analytics}
+\subsubsection{Description and Priority}
+This feature provides users with insights into their spending habits. \textbf{Priority: Medium}.
+
+\subsubsection{Stimulus/Response Sequences}
+\begin{itemize}
+    \item User selects "View Analytics" from the dashboard.
+    \item System generates a report based on categorized receipts.
+    \item User views spending trends and summaries.
+\end{itemize}
+
+\subsubsection{Functional Requirements}
+\begin{itemize}
+    \item \textbf{REQ-4}: The system must categorize receipts by type (e.g., groceries, travel).
+    \item \textbf{REQ-5}: The system must generate monthly/weekly spending summaries.
+\end{itemize}
+
+% Section 5: Other Nonfunctional Requirements
+\section{Other Nonfunctional Requirements}
+\subsection{Performance Requirements}
+\begin{itemize}
+    \item The system must process OCR requests within 5 seconds.
+    \item The system must handle up to 10,000 concurrent users.
+\end{itemize}
+
+\subsection{Safety Requirements}
+\begin{itemize}
+    \item The system must ensure data privacy and comply with GDPR.
+\end{itemize}
+
+\subsection{Security Requirements}
+\begin{itemize}
+    \item All data must be encrypted during transmission and storage.
+    \item User authentication must be implemented using JWT or OAuth.
+\end{itemize}
+
+\subsection{Software Quality Attributes}
+\begin{itemize}
+    \item \textbf{Usability}: The system must have an intuitive and responsive UI.
+    \item \textbf{Scalability}: The system must scale to support increasing numbers of users and receipts.
+\end{itemize}
+
+\subsection{Business Rules}
+\begin{itemize}
+    \item Only authenticated users can access their receipts.
+    \item Administrators can manage user accounts and system settings.
+\end{itemize}
+
+% Section 6: Other Requirements
+\section{Other Requirements}
+\begin{itemize}
+    \item The system must support multi-language interfaces.
+    \item The system must comply with international data protection laws.
+\end{itemize}
+
+% Appendices
+\appendix
+\section{Glossary}
+\begin{itemize}
+    \item \textbf{OCR}: Optical Character Recognition.
+    \item \textbf{DRMS}: Digital Receipt Management System.
+    \item \textbf{API}: Application Programming Interface.
+\end{itemize}
+
+\section{To Be Determined List}
+\begin{itemize}
+    \item TBD-1: Finalize integration with payment gateways.
+    \item TBD-2: Define warranty reminder frequency.
+\end{itemize}
+
+\end{document}
