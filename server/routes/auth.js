@@ -89,4 +89,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+// Google OAuth Callback Route
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  (req, res) => {
+    const { token, user } = req.user;
+
+    // Redirect to frontend with JWT token
+    res.redirect(`http://localhost:5173?token=${token}`);
+  }
+);
+
 module.exports = router;
