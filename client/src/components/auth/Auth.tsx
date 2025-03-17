@@ -3,6 +3,7 @@ import React, { useState, FormEvent } from 'react';
 import axiosInstance from '../../api/axios'; 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
+import { useNavigate } from 'react-router-dom';
 
 const GOOGLE_CLIENT_ID = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || '';
 
@@ -14,6 +15,8 @@ const AuthPage: React.FC = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+
 
   const [errors, setErrors] = useState({
     email: '',
@@ -74,6 +77,7 @@ const AuthPage: React.FC = () => {
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         setMessage(`Welcome, ${response.data.user.username}!`);
+        navigate('/dashboard');
         // Reset form
         setEmail('');
         setPassword('');
@@ -104,7 +108,7 @@ const AuthPage: React.FC = () => {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
 
-      window.location.href = '/dashboard'; // Redirect after login
+      navigate('/dashboard');
     } catch (error) {
       console.error('Google login error:', error);
       setMessage('Google authentication failed');
