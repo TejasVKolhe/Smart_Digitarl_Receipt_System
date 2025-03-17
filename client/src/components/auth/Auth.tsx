@@ -2,28 +2,13 @@ import React, { useState, FormEvent } from 'react';
 import axios from 'axios';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
-import { config } from 'dotenv';
-
+import { useNavigate } from 'react-router-dom';
+import axiosInstance from '../../api/axios';
 
 const GOOGLE_CLIENT_ID = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || '';
 
-
-interface User {
-  id: string;
-  username: string;
-  email: string;
-}
-
-// Create a real axios instance instead of the mock
-const API_URL = 'http://localhost:5000'; // Adjust to your backend URL
-const axiosInstance = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
-
 const AuthPage: React.FC = () => {
+  const navigate = useNavigate(); // Move inside component
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +16,7 @@ const AuthPage: React.FC = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(''); // Added missing error state
 
   const [errors, setErrors] = useState({
     email: '',
@@ -78,10 +64,11 @@ const AuthPage: React.FC = () => {
 
     setLoading(true);
     setMessage('');
+    setError(''); // Clear any previous errors
 
     try {
       const response = await axiosInstance.post(
-        isLogin ? '/api/auth/login' : '/api/auth/register',
+        isLogin ? '/auth/login' : '/auth/register',
         isLogin ? { email, password } : { email, password, username }
       );
 
@@ -91,25 +78,22 @@ const AuthPage: React.FC = () => {
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         setMessage(`Welcome, ${response.data.user.username}!`);
-        // Reset form
-        setEmail('');
-        setPassword('');
-        setUsername('');
+        navigate('/dashboard'); // Now correctly used inside the component
       }
     } catch (error: any) {
       console.error('Auth error:', error);
 
       if (error.response?.status === 409 && !isLogin) {
-        // Handle case where email already exists during signup
         setMessage('An account with this email already exists. Please login instead.');
-        setIsLogin(true); // Switch to login mode
+        setIsLogin(true);
       } else {
-        setMessage(error.response?.data?.message || 'An unexpected error occurred');
+        setError(error.response?.data?.message || 'An unexpected error occurred');
       }
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleGoogleLogin = async (response: any) => {
     try {
@@ -271,7 +255,7 @@ const InputField: React.FC<{
         >
           {showPassword ? (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
           ) : (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

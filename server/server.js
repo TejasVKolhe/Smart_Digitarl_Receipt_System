@@ -1,24 +1,30 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const passport = require('passport');
 const path = require('path');
-require('dotenv').config();
-require('./models/User'); // Uncomment this line
+
+require('./models/User'); // Make sure this model exists
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: 'http://localhost:5173', // Allow only frontend origin
+    credentials: true, // Allow cookies, authorization headers, etc.
+  })
+);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Passport middleware
 app.use(passport.initialize());
 
-// Passport config
+// Passport config - make sure this file exists
 require('./config/passport')(passport);
 
 // Basic route for testing
@@ -29,13 +35,13 @@ app.get('/api/test', (req, res) => {
 // Routes
 const authRoutes = require('./routes/auth');
 const receiptRoutes = require('./routes/receipts');
+const uploadRoutes = require('./routes/upload'); 
 
 app.use('/api/auth', authRoutes);
 app.use('/api/receipts', receiptRoutes);
-
+app.use('/api/upload', uploadRoutes);
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/receipt_manager', {
-  useNewUrlParser: true,
+mongoose.connect(process.env.MONGODB_URI , {
   useUnifiedTopology: true,
 })
 .then(() => console.log('MongoDB connected'))
@@ -50,6 +56,7 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

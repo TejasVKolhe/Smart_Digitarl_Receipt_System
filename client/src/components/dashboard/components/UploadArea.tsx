@@ -4,20 +4,20 @@ const UploadArea: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  
+
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
-  
+
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-  
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
       if (droppedFile.type.startsWith('image/')) {
@@ -25,34 +25,53 @@ const UploadArea: React.FC = () => {
       }
     }
   };
-  
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
     }
   };
-  
+
   const handleUpload = async () => {
     if (!file) return;
-    
-    setIsUploading(true);
-    
-    // Simulate upload delay
-    setTimeout(() => {
-      setIsUploading(false);
-      setFile(null);
-      // Here you would normally send the file to your backend
-    }, 2000);
+
+    // Step 1: Get a pre-signed URL from the backend
+    const response = await fetch(
+      `http://localhost:5000/api/upload/presigned-url?fileName=${file.name}&fileType=${file.type}`
+    );
+    const data = await response.json();
+    const { url } = data;
+
+    if (!url) {
+      alert('Failed to get upload URL');
+      return;
+    }
+
+    // Step 2: Upload the file directly to S3 using the pre-signed URL
+    const uploadResponse = await fetch(url, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type,
+      },
+    });
+
+    if (uploadResponse.ok) {
+      alert('File uploaded successfully!');
+    } else {
+      alert('Upload failed');
+    }
   };
-  
+
+
+
   return (
     <div className="space-y-4">
-      <div 
-        className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-          isDragging 
-            ? 'border-indigo-500 bg-indigo-50' 
+      <div
+        className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${isDragging
+            ? 'border-indigo-500 bg-indigo-50'
             : 'border-gray-300 hover:border-indigo-400'
-        }`}
+          }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -71,7 +90,7 @@ const UploadArea: React.FC = () => {
           <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
         </div>
       </div>
-      
+
       {file && (
         <div className="bg-indigo-50 rounded-xl p-4">
           <div className="flex items-center justify-between">
@@ -81,7 +100,7 @@ const UploadArea: React.FC = () => {
               </svg>
               <span className="ml-2 text-sm text-gray-700 truncate">{file.name}</span>
             </div>
-            <button 
+            <button
               onClick={() => setFile(null)}
               className="text-gray-500 hover:text-gray-700"
             >
@@ -92,16 +111,15 @@ const UploadArea: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {file && (
         <button
           onClick={handleUpload}
           disabled={isUploading}
-          className={`w-full py-2 px-4 rounded-xl text-white font-medium ${
-            isUploading 
-              ? 'bg-indigo-400 cursor-not-allowed' 
+          className={`w-full py-2 px-4 rounded-xl text-white font-medium ${isUploading
+              ? 'bg-indigo-400 cursor-not-allowed'
               : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
-          }`}
+            }`}
         >
           {isUploading ? (
             <div className="flex items-center justify-center">

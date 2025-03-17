@@ -2,20 +2,28 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const passport = require('passport');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+// FIXED: Remove the duplicate passport declaration
+// const passport = require("passport");  <-- THIS LINE CAUSES THE ERROR
 
-// @route   POST api/auth/register
+// Import passport from the app
+const passport = require('passport');
+
+// Google OAuth client
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// @route   POST /api/auth/register
 // @desc    Register user
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-
+    const { email, password, username } = req.body;
+    
     // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(409).json({ message: 'User already exists' });
     }
 
     // Create new user
@@ -29,41 +37,36 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
 
-    // Save user to database
+    // Save user
     await user.save();
 
-    // Create JWT payload
+    // Create JWT token
     const payload = {
       id: user.id,
-      username: user.username
+      email: user.email
     };
 
-    // Sign token
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET || 'your_jwt_secret',
-      { expiresIn: '1h' },
-      (err, token) => {
-        if (err) throw err;
-        res.json({
-          success: true,
-          token: 'Bearer ' + token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email
-          }
-        });
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', { 
+      expiresIn: '1d' 
+    });
+
+    res.json({
+      success: true,
+      token: token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
       }
-    );
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// @route   POST api/auth/login
-// @desc    Login user and return JWT token
+// @route   POST /api/auth/login
+// @desc    Login user
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
@@ -72,7 +75,7 @@ router.post('/login', async (req, res) => {
     // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(404).json({ message: 'User not found' });
     }
 
     // Check password
@@ -81,41 +84,96 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Create JWT payload
+    // Create JWT token
     const payload = {
       id: user.id,
-      username: user.username
+      email: user.email
     };
 
-    // Sign token
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET || 'your_jwt_secret',
-      { expiresIn: '1h' },
-      (err, token) => {
-        if (err) throw err;
-        res.json({
-          success: true,
-          token: 'Bearer ' + token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email
-          }
-        });
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', { 
+      expiresIn: '1d' 
+    });
+
+    res.json({
+      success: true,
+      token: token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
       }
-    );
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// @route   GET api/auth/user
-// @desc    Get user data
+// @route   POST /api/auth/google
+// @desc    Login/register with Google
+// @access  Public
+router.post('/google', async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    // Verify token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const { email, name, sub: googleId } = ticket.getPayload();
+    
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Generate random password for the user
+      const randomPassword = Math.random().toString(36).slice(-8);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+      
+      // Create new user
+      user = new User({
+        username: name,
+        email,
+        password: hashedPassword,
+        googleId
+      });
+      
+      await user.save();
+    }
+    
+    // Create JWT token
+    const payload = {
+      id: user.id,
+      email: user.email
+    };
+    
+    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', { 
+      expiresIn: '1d' 
+    });
+    
+    res.json({
+      success: true,
+      token: jwtToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error('Google auth error:', err);
+    res.status(500).json({ message: 'Google authentication failed' });
+  }
+});
+
+// @route   GET /api/auth/current
+// @desc    Get current user
 // @access  Private
 router.get(
-  '/user',
+  '/current',
   passport.authenticate('jwt', { session: false }),
   (req, res) => {
     res.json({
