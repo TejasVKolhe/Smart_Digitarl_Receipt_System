@@ -1,27 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, FormEvent } from 'react';
-import axios from 'axios';
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from "jwt-decode";
-import { config } from 'dotenv';
-
+import axiosInstance from '../../api/axios'; 
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import { jwtDecode } from 'jwt-decode';
 
 const GOOGLE_CLIENT_ID = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || '';
-
-
-interface User {
-  id: string;
-  username: string;
-  email: string;
-}
-
-// Create a real axios instance instead of the mock
-const API_URL = 'http://localhost:5000'; // Adjust to your backend URL
-const axiosInstance = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
 
 const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -81,7 +64,7 @@ const AuthPage: React.FC = () => {
 
     try {
       const response = await axiosInstance.post(
-        isLogin ? '/api/auth/login' : '/api/auth/register',
+        isLogin ? '/auth/login' : '/auth/register',
         isLogin ? { email, password } : { email, password, username }
       );
 
@@ -162,6 +145,15 @@ const AuthPage: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => handleGoogleLogin({ credential: 'sample_google_token' })}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg"
+              >
+                Login with Google
+              </button>
+            </div>
             {!isLogin && (
               <InputField
                 label="Username"
@@ -290,7 +282,7 @@ const InputField: React.FC<{
         {error}
       </p>
     )}
-  </div>
+  </div>  
 );
 
 export default AuthPage;

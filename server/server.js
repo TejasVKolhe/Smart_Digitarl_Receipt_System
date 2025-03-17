@@ -5,13 +5,16 @@ const bodyParser = require('body-parser');
 const passport = require('passport');
 const path = require('path');
 require('dotenv').config();
-require('./models/User'); // Uncomment this line
+require('./models/User');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
+// Middleware - Fix CORS configuration (you have it defined twice)
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5000'], // Allow both server and client origins
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -33,12 +36,15 @@ const receiptRoutes = require('./routes/receipts');
 app.use('/api/auth', authRoutes);
 app.use('/api/receipts', receiptRoutes);
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/receipt_manager', {
+// Connect to MongoDB - Add more debugging
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/receipt_manager', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('MongoDB connected'))
+.then(() => {
+  console.log('MongoDB connected');
+  console.log('Connection string:', process.env.MONGO_URI ? 'Using environment variable' : 'Using default localhost');
+})
 .catch(err => console.log('MongoDB connection error:', err));
 
 // Serve static assets if in production
