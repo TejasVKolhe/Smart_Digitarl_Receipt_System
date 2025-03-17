@@ -44,7 +44,10 @@ app.use('/api/upload', uploadRoutes);
 mongoose.connect(process.env.MONGODB_URI , {
   useUnifiedTopology: true,
 })
-.then(() => console.log('MongoDB connected'))
+.then(() => {
+  console.log('MongoDB connected');
+  console.log('Connection string:', process.env.MONGO_URI ? 'Using environment variable' : 'Using default localhost');
+})
 .catch(err => console.log('MongoDB connection error:', err));
 
 // Serve static assets if in production

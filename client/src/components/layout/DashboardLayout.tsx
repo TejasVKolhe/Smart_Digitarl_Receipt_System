@@ -1,3 +1,4 @@
+ 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -7,7 +8,7 @@ interface DashboardLayoutProps {
   user: { username: string };
 }
 
-const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, user }) => {
+const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   
@@ -18,10 +19,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, u
     { name: 'Categories', href: '/dashboard/categories', icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
     { name: 'Settings', href: '/dashboard/settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
   ];
-  
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-700 via-indigo-600 to-blue-500">
-      {/* Mobile sidebar */}
+      {/* Mobile Sidebar */}
       <div className={`fixed inset-0 z-40 flex md:hidden ${sidebarOpen ? 'visible' : 'invisible'}`} role="dialog">
         <div className={`fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity ease-in-out duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)}></div>
         
@@ -76,28 +77,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, u
               ))}
             </nav>
           </div>
-          <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-            <div className="flex-shrink-0 group block">
-              <div className="flex items-center">
-                <div className="inline-block h-10 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                  {user.username ? user.username.charAt(0).toUpperCase() : 'U'}
-                </div>
-                <div className="ml-3">
-                  <p className="text-base font-medium text-gray-700">{user.username}</p>
-                  <button 
-                    onClick={onLogout}
-                    className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Desktop sidebar */}
+      {/* Desktop Sidebar */}
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
         <div className="flex-1 flex flex-col min-h-0 bg-white/95 backdrop-blur-sm shadow-xl">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
@@ -137,28 +120,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, u
               ))}
             </nav>
           </div>
-          <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-            <div className="flex-shrink-0 w-full group block">
-              <div className="flex items-center">
-                <div className="inline-block h-10 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                  {user.username ? user.username.charAt(0).toUpperCase() : 'U'}
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-700">{user.username}</p>
-                  <button 
-                    onClick={onLogout}
-                    className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       
-      {/* Main content */}
+      {/* Main Content */}
       <div className="md:pl-64 flex flex-col flex-1">
         <div className="sticky top-0 z-10 md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 bg-gradient-to-r from-purple-700 via-indigo-600 to-blue-500">
           <button
@@ -173,9 +138,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, u
           </button>
         </div>
         <main className="flex-1 p-6">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
+          <div className="max-w-7xl mx-auto">{children}</div>
         </main>
       </div>
     </div>

@@ -1,3 +1,6 @@
+// Backend code (Node.js/Express)
+
+// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
@@ -25,9 +28,12 @@ router.post('/register', async (req, res) => {
     if (user) {
       return res.status(409).json({ message: 'User already exists' });
     }
-
-    // Create new user
-    user = new User({
+    
+    // Hash password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create user
+    const newUser = new User({
       username,
       email,
       password
@@ -71,17 +77,17 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Check if user exists
+    
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    // Check password
+    
+    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Create JWT token
@@ -176,11 +182,10 @@ router.get(
   '/current',
   passport.authenticate('jwt', { session: false }),
   (req, res) => {
-    res.json({
-      id: req.user.id,
-      username: req.user.username,
-      email: req.user.email
-    });
+    const { token, user } = req.user;
+
+    // Redirect to frontend with JWT token
+    res.redirect(`http://localhost:5173?token=${token}`);
   }
 );
 

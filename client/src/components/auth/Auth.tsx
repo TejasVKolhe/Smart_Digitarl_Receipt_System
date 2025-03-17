@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, FormEvent } from 'react';
 import axios from 'axios';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -69,6 +70,7 @@ const AuthPage: React.FC = () => {
     try {
       const response = await axiosInstance.post(
         isLogin ? '/auth/login' : '/auth/register',
+        isLogin ? '/auth/login' : '/auth/register',
         isLogin ? { email, password } : { email, password, username }
       );
 
@@ -105,7 +107,7 @@ const AuthPage: React.FC = () => {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
 
-      window.location.href = '/dashboard'; // Redirect after login
+      navigate('/dashboard');
     } catch (error) {
       console.error('Google login error:', error);
       setMessage('Google authentication failed');
@@ -146,6 +148,15 @@ const AuthPage: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => handleGoogleLogin({ credential: 'sample_google_token' })}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg"
+              >
+                Login with Google
+              </button>
+            </div>
             {!isLogin && (
               <InputField
                 label="Username"
@@ -274,7 +285,7 @@ const InputField: React.FC<{
         {error}
       </p>
     )}
-  </div>
+  </div>  
 );
 
 export default AuthPage;
