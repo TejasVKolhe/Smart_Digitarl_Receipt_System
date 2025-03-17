@@ -1,108 +1,128 @@
-// Backend code (Node.js/Express)
-
-// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const passport = require('passport');
 const User = require('../models/User');
 
-// Register new user
+// @route   POST api/auth/register
+// @desc    Register user
+// @access  Public
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    
-    // Check if email already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ 
-        message: 'Email already in use. Please login instead.' 
-      });
+
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ message: 'User already exists' });
     }
-    
-    // Hash password before saving
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Create user
-    const newUser = new User({
+
+    // Create new user
+    user = new User({
       username,
       email,
-      password: hashedPassword
+      password
     });
-    
-    await newUser.save();
-    
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: newUser._id }, 
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
-    
-    res.status(201).json({
-      token,
-      user: {
-        id: newUser._id,
-        username: newUser.username,
-        email: newUser.email
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+
+    // Save user to database
+    await user.save();
+
+    // Create JWT payload
+    const payload = {
+      id: user.id,
+      username: user.username
+    };
+
+    // Sign token
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET || 'your_jwt_secret',
+      { expiresIn: '1h' },
+      (err, token) => {
+        if (err) throw err;
+        res.json({
+          success: true,
+          token: 'Bearer ' + token,
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email
+          }
+        });
       }
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
   }
 });
 
-// Login existing user
+// @route   POST api/auth/login
+// @desc    Login user and return JWT token
+// @access  Public
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    // Find user by email
+
+    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
-    
-    // Compare password
+
+    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
-    
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
-    
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email
+
+    // Create JWT payload
+    const payload = {
+      id: user.id,
+      username: user.username
+    };
+
+    // Sign token
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET || 'your_jwt_secret',
+      { expiresIn: '1h' },
+      (err, token) => {
+        if (err) throw err;
+        res.json({
+          success: true,
+          token: 'Bearer ' + token,
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email
+          }
+        });
       }
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
   }
 });
 
+// @route   GET api/auth/user
+// @desc    Get user data
+// @access  Private
 router.get(
-  "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
-
-// Google OAuth Callback Route
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { failureRedirect: "/login" }),
+  '/user',
+  passport.authenticate('jwt', { session: false }),
   (req, res) => {
-    const { token, user } = req.user;
-
-    // Redirect to frontend with JWT token
-    res.redirect(`http://localhost:5173?token=${token}`);
+    res.json({
+      id: req.user.id,
+      username: req.user.username,
+      email: req.user.email
+    });
   }
 );
 
