@@ -70,7 +70,6 @@ const AuthPage: React.FC = () => {
     try {
       const response = await axiosInstance.post(
         isLogin ? '/auth/login' : '/auth/register',
-        isLogin ? '/auth/login' : '/auth/register',
         isLogin ? { email, password } : { email, password, username }
       );
 
