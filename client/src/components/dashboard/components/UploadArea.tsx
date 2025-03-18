@@ -34,34 +34,68 @@ const UploadArea: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file) return;
-
-    // Step 1: Get a pre-signed URL from the backend
-    const response = await fetch(
-      `http://localhost:5000/api/upload/presigned-url?fileName=${file.name}&fileType=${file.type}`
-    );
-    const data = await response.json();
-    const { url } = data;
-
-    if (!url) {
-      alert('Failed to get upload URL');
-      return;
-    }
-
-    // Step 2: Upload the file directly to S3 using the pre-signed URL
-    const uploadResponse = await fetch(url, {
-      method: 'PUT',
-      body: file,
-      headers: {
-        'Content-Type': file.type,
-      },
-    });
-
-    if (uploadResponse.ok) {
-      alert('File uploaded successfully!');
-    } else {
-      alert('Upload failed');
+  
+    try {
+      // Step 1: Get pre-signed URL
+      const response = await fetch(
+        `http://localhost:5000/api/upload/presigned-url?fileName=${file.name}&fileType=${file.type}`
+      );
+  
+      const data = await response.json();
+  
+      // 🛑 Ensure `data.fileUrl` exists before using it
+      if (!data.url || !data.fileUrl) {
+        alert('Failed to get upload URL');
+        return;
+      }
+  
+      const { url, fileUrl } = data; // ✅ `fileUrl` is now defined here
+  
+      console.log('🔗 Upload URL:', url);
+      console.log('📂 File URL:', fileUrl);
+  
+      // Step 2: Upload file to S3
+      const uploadResponse = await fetch(url, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+  
+      if (!uploadResponse.ok) {
+        alert('Upload failed');
+        return;
+      }
+  
+      // Step 3: Save receipt in MongoDB
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+      console.log('🧑‍💻 User from localStorage:', user);
+      console.log('📝 Sending data:', {
+        userId: user.id, // Use `.id` instead of `._id`
+        fileName: file.name,
+        fileUrl,
+      });
+  
+      await fetch('http://localhost:5000/api/upload/save-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id, // Use `.id` not `._id`
+          fileName: file.name,
+          fileUrl,
+        }),
+      });
+  
+      alert('File uploaded and saved successfully!');
+    } catch (error) {
+      console.error('❌ Error during upload:', error);
+      alert('Something went wrong, check console for details.');
     }
   };
+  
+
 
 
 
@@ -69,8 +103,8 @@ const UploadArea: React.FC = () => {
     <div className="space-y-4">
       <div
         className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${isDragging
-            ? 'border-indigo-500 bg-indigo-50'
-            : 'border-gray-300 hover:border-indigo-400'
+          ? 'border-indigo-500 bg-indigo-50'
+          : 'border-gray-300 hover:border-indigo-400'
           }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -117,8 +151,8 @@ const UploadArea: React.FC = () => {
           onClick={handleUpload}
           disabled={isUploading}
           className={`w-full py-2 px-4 rounded-xl text-white font-medium ${isUploading
-              ? 'bg-indigo-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+            ? 'bg-indigo-400 cursor-not-allowed'
+            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
             }`}
         >
           {isUploading ? (
