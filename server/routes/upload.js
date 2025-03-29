@@ -1,6 +1,8 @@
+// server/routes/upload.js
 const express = require('express');
 const AWS = require('aws-sdk');
 const Receipt = require('../models/Receipt'); // Import Receipt model
+const { extractTextFromImage } = require('../services/ocrServices'); // Import OCR service
 require('dotenv').config();
 
 const router = express.Router();
@@ -48,16 +50,52 @@ router.post('/save-receipt', async (req, res) => {
   }
 
   try {
-    const newReceipt = new Receipt({ userId, fileName, fileUrl });
+    // Create a new receipt with pending status
+    const newReceipt = new Receipt({ 
+      userId, 
+      fileName, 
+      fileUrl,
+      processingStatus: 'pending'
+    });
     await newReceipt.save();
+    
+    // Process OCR in the background
+    processReceiptOCR(newReceipt._id, fileUrl);
+    
     console.log('✅ Receipt saved:', newReceipt); // Debug log
-    res.json({ message: 'Receipt saved successfully', receipt: newReceipt });
+    res.json({ 
+      message: 'Receipt saved successfully and OCR processing started', 
+      receipt: newReceipt 
+    });
   } catch (error) {
     console.error('❌ Error saving receipt:', error);
     res.status(500).json({ error: 'Failed to save receipt' });
   }
 });
 
+// Process OCR for a receipt
+async function processReceiptOCR(receiptId, imageUrl) {
+  try {
+    // Update status to processing
+    await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'processing' });
+    
+    // Extract text from image
+    const extractedText = await extractTextFromImage(imageUrl);
+    
+    // Update receipt with extracted text
+    await Receipt.findByIdAndUpdate(receiptId, {
+      extractedText,
+      processingStatus: 'completed'
+    });
+    
+    console.log(`✅ OCR processing completed for receipt ${receiptId}`);
+  } catch (error) {
+    console.error(`❌ Error processing OCR for receipt ${receiptId}:`, error);
+    
+    // Update status to failed
+    await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'failed' });
+  }
+}
 
 // Fetch all receipts for a specific user
 router.get('/receipts/:userId', async (req, res) => {
@@ -76,6 +114,31 @@ router.get('/receipts/:userId', async (req, res) => {
   } catch (error) {
     console.error('❌ Error fetching receipts:', error);
     res.status(500).json({ error: 'Failed to fetch receipts' });
+  }
+});
+
+// New endpoint to get OCR status and results
+router.get('/receipt-ocr/:receiptId', async (req, res) => {
+  try {
+    const { receiptId } = req.params;
+    
+    if (!receiptId) {
+      return res.status(400).json({ error: 'Receipt ID is required' });
+    }
+    
+    const receipt = await Receipt.findById(receiptId);
+    
+    if (!receipt) {
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+    
+    res.json({
+      processingStatus: receipt.processingStatus,
+      extractedText: receipt.extractedText
+    });
+  } catch (error) {
+    console.error('❌ Error fetching OCR status:', error);
+    res.status(500).json({ error: 'Failed to fetch OCR status' });
   }
 });
 

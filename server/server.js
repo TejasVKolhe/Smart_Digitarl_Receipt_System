@@ -46,7 +46,7 @@ mongoose.connect(process.env.MONGODB_URI , {
 })
 .then(() => {
   console.log('MongoDB connected');
-  console.log('Connection string:', process.env.MONGO_URI ? 'Using environment variable' : 'Using default localhost');
+  console.log('Connection string:', process.env.MONGODB_URI ? 'Using environment variable' : 'Using default localhost');
 })
 .catch(err => console.log('MongoDB connection error:', err));
 
