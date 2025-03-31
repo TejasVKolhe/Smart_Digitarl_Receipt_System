@@ -22,16 +22,30 @@ router.get('/presigned-url', async (req, res) => {
 
   const uniqueFileName = `uploads/${Date.now()}_${fileName}`;
 
-  const params = {
+  const uploadParams = {
     Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: uniqueFileName,
     Expires: 300, // URL expires in 5 minutes
     ContentType: fileType,
   };
 
+  // Generate for OCR preprocessing downloading
+  const downloadParams = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: uniqueFileName,
+    Expires: 3600
+  };
+
   try {
-    const url = await s3.getSignedUrlPromise('putObject', params);
-    res.json({ url, fileUrl: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.amazonaws.com/${uniqueFileName}` });
+    const uploadUrl = await s3.getSignedUrlPromise('putObject', uploadParams);
+    const downloadUrl = await s3.getSignedUrlPromise('getObject', downloadParams);
+
+    res.json({
+      uploadUrl,
+      downloadUrl,
+      fileKey: uniqueFileName
+    });
+    
   } catch (error) {
     console.error('Error generating pre-signed URL:', error);
     res.status(500).json({ error: 'Failed to generate URL' });
@@ -42,9 +56,9 @@ router.get('/presigned-url', async (req, res) => {
 router.post('/save-receipt', async (req, res) => {
   console.log('📩 Incoming request to /save-receipt:', req.body); // Debug log
 
-  const { userId, fileName, fileUrl } = req.body;
+  const { userId, fileName, fileKey } = req.body;
 
-  if (!userId || !fileName || !fileUrl) {
+  if (!userId || !fileName || !fileKey) {
     console.error('❌ Missing required fields:', { userId, fileName, fileUrl });
     return res.status(400).json({ error: 'Missing required fields' });
   }
@@ -54,13 +68,13 @@ router.post('/save-receipt', async (req, res) => {
     const newReceipt = new Receipt({ 
       userId, 
       fileName, 
-      fileUrl,
+      fileKey,
       processingStatus: 'pending'
     });
     await newReceipt.save();
     
     // Process OCR in the background
-    processReceiptOCR(newReceipt._id, fileUrl);
+    processReceiptOCR(newReceipt._id, fileKey);
     
     console.log('✅ Receipt saved:', newReceipt); // Debug log
     res.json({ 
@@ -74,13 +88,21 @@ router.post('/save-receipt', async (req, res) => {
 });
 
 // Process OCR for a receipt
-async function processReceiptOCR(receiptId, imageUrl) {
+async function processReceiptOCR(receiptId, fileKey) {
   try {
+    // Generate presigned URL for OCR downloading
+    const downloadParams = {
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: fileKey,
+      Expires: 600
+    };
+    const presignedUrl = await s3.getSignedUrlPromise('getObject', downloadParams);
     // Update status to processing
     await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'processing' });
     
     // Extract text from image
-    const extractedText = await extractTextFromImage(imageUrl);
+    const extractedText = await extractTextFromImage(presignedUrl);
+    console.log('📄 Extracted text:', extractedText); // Debug log
     
     // Update receipt with extracted text
     await Receipt.findByIdAndUpdate(receiptId, {

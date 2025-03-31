@@ -94,19 +94,19 @@ const UploadArea: React.FC = () => {
   
       const data = await response.json();
   
-      if (!data.url || !data.fileUrl) {
+      if (!data.uploadUrl || !data.fileKey) {
         alert('Failed to get upload URL');
         setIsUploading(false);
         return;
       }
   
-      const { url, fileUrl } = data;
+      const { uploadUrl, fileKey } = data;
   
-      console.log('🔗 Upload URL:', url);
-      console.log('📂 File URL:', fileUrl);
+      console.log('🔗 Upload URL:', uploadUrl);
+      console.log('📂 File URL:', fileKey);
   
       // Step 2: Upload file to S3
-      const uploadResponse = await fetch(url, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: {
@@ -127,7 +127,7 @@ const UploadArea: React.FC = () => {
       console.log('📝 Sending data:', {
         userId: user.id,
         fileName: file.name,
-        fileUrl,
+        fileKey,
       });
   
       const saveResponse = await fetch('http://localhost:5000/api/upload/save-receipt', {
@@ -136,7 +136,7 @@ const UploadArea: React.FC = () => {
         body: JSON.stringify({
           userId: user.id,
           fileName: file.name,
-          fileUrl,
+          fileKey,
         }),
       });
       
