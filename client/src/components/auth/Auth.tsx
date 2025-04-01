@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, FormEvent } from 'react';
-import axios from 'axios';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from 'react-router-dom';
@@ -73,32 +73,38 @@ const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
     setMessage('');
     setError(''); // Clear any previous errors
 
-    try {
-      const response = await axiosInstance.post(
-        isLogin ? '/auth/login' : '/auth/register',
-        isLogin ? { email, password } : { email, password, username }
-      );
-
-      if (response?.data?.user) {
-        // Store token in localStorage for authentication
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-
-        setMessage(`Welcome, ${response.data.user.username}!`);
-        navigate('/dashboard'); // Now correctly used inside the component
-      }
-    } catch (error: any) {
-      console.error('Auth error:', error);
-
-      if (error.response?.status === 409 && !isLogin) {
-        setMessage('An account with this email already exists. Please login instead.');
-        setIsLogin(true);
-      } else {
-        setError(error.response?.data?.message || 'An unexpected error occurred');
-      }
-    } finally {
-      setLoading(false);
+    const token = localStorage.getItem('token');
+try {
+  const response = await axiosInstance.post(
+    isLogin ? 'api/auth/login' : 'api/auth/register', // Fixed the typo in 'api/auth/register'
+    isLogin ? { email, password } : { email, password, username },
+    {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '', // Add the token if it exists
+      },
     }
+  );
+
+  if (response?.data?.user) {
+    // Store token in localStorage for authentication
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+
+    setMessage(`Welcome, ${response.data.user.username}!`);
+    navigate('/dashboard'); // Navigate to the dashboard
+  }
+} catch (error: any) {
+  console.error('Auth error:', error);
+
+  if (error.response?.status === 409 && !isLogin) {
+    setMessage('An account with this email already exists. Please login instead.');
+    setIsLogin(true);
+  } else {
+    setError(error.response?.data?.message || 'An unexpected error occurred');
+  }
+} finally {
+  setLoading(false);
+}
   };
 
 

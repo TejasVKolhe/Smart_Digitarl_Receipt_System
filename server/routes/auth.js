@@ -23,55 +23,51 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 router.post('/register', async (req, res) => {
   try {
     const { email, password, username } = req.body;
-    
+
     // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
       return res.status(409).json({ message: 'User already exists' });
     }
-    
+
     // Hash password before saving
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
     // Create user
     const newUser = new User({
       username,
       email,
-      password
+      password: hashedPassword, // Use the hashed password here
     });
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-
     // Save user
-    await user.save();
+    await newUser.save();
 
     // Create JWT token
     const payload = {
-      id: user.id,
-      email: user.email
+      id: newUser.id,
+      email: newUser.email,
     };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', { 
-      expiresIn: '1d' 
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', {
+      expiresIn: '1d',
     });
 
     res.json({
       success: true,
       token: token,
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email
-      }
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+      },
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
-
 // @route   POST /api/auth/login
 // @desc    Login user
 // @access  Public
