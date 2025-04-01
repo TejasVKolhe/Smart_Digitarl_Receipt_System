@@ -189,4 +189,55 @@ router.get(
   }
 );
 
+router.put(
+  '/profile',
+  passport.authenticate('jwt', { session: false }),
+  async (req, res) => {
+    try {
+      const { username, email, password } = req.body;
+      const userId = req.user.id;
+
+      // Check for existing users with same username/email
+      const existingUser = await User.findOne({
+        $or: [
+          { username, _id: { $ne: userId } },
+          { email, _id: { $ne: userId } }
+        ]
+      });
+
+      if (existingUser) {
+        return res.status(409).json({ 
+          message: existingUser.username === username 
+            ? 'Username already taken' 
+            : 'Email already registered'
+        });
+      }
+
+      const updateFields = { username, email };
+      
+      // Only update password if provided
+      if (password) {
+        const salt = await bcrypt.genSalt(10);
+        updateFields.password = await bcrypt.hash(password, salt);
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: updateFields },
+        { new: true, select: '-password -__v' }
+      );
+
+      res.json({
+        success: true,
+        user: updatedUser,
+        message: 'Profile updated successfully'
+      });
+
+    } catch (error) {
+      console.error('Profile update error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
 module.exports = router;
