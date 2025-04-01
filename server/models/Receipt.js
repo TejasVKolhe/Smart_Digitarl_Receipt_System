@@ -1,3 +1,4 @@
+// server/models/Receipt.js
 const mongoose = require('mongoose');
 
 const ReceiptSchema = new mongoose.Schema({
@@ -7,12 +8,10 @@ const ReceiptSchema = new mongoose.Schema({
     required: true
   },
   // For uploaded receipts
-  fileName: String,
+  fileName: { type: String, required: true },
+  fileKey: { type: String, required: true },
   fileUrl: String,
-  uploadedAt: {
-    type: Date,
-    default: Date.now
-  },
+  uploadedAt: { type: Date, default: Date.now },
   // For email receipts
   source: {
     type: String,
@@ -32,6 +31,12 @@ const ReceiptSchema = new mongoose.Schema({
   isProcessed: {
     type: Boolean,
     default: false
+  },
+  extractedText: { type: String, default: '' },
+  processingStatus: { 
+    type: String, 
+    enum: ['pending', 'processing', 'completed', 'failed'], 
+    default: 'pending' 
   },
   metadata: {
     type: Object,

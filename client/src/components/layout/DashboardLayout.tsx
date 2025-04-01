@@ -1,4 +1,3 @@
- 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -8,7 +7,7 @@ interface DashboardLayoutProps {
   user: { username: string };
 }
 
-const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onLogout, user }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   

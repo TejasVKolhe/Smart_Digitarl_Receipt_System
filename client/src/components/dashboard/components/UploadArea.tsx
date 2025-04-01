@@ -1,9 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// client/src/components/dashboard/components/UploadArea.tsx
 import React, { useState } from 'react';
 
 const UploadArea: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [, setUploadedReceipt] = useState<any>(null);
+  const [extractedText, setExtractedText] = useState<string>('');
+  const [processingStatus, setProcessingStatus] = useState<string>('');
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -32,8 +37,54 @@ const UploadArea: React.FC = () => {
     }
   };
 
+  const checkOcrStatus = async (receiptId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/upload/receipt-ocr/${receiptId}`);
+      const data = await response.json();
+      
+      setProcessingStatus(data.processingStatus);
+      
+      if (data.processingStatus === 'completed') {
+        setExtractedText(data.extractedText);
+        return true;
+      } else if (data.processingStatus === 'failed') {
+        alert('OCR processing failed. Please try again.');
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking OCR status:', error);
+      return false;
+    }
+  };
+
+  const pollOcrStatus = async (receiptId: string) => {
+    let isComplete = false;
+    let attempts = 0;
+    const maxAttempts = 30; // Maximum polling attempts (30 * 2 seconds = 60 seconds max)
+    
+    while (!isComplete && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between polls
+      isComplete = await checkOcrStatus(receiptId);
+      attempts++;
+    }
+    
+    if (!isComplete) {
+      setProcessingStatus('timeout');
+      alert('OCR processing is taking longer than expected. You can check the results later.');
+    }
+    
+    setIsUploading(false);
+  };
+
   const handleUpload = async () => {
     if (!file) return;
+    
+    setIsUploading(true);
+    setProcessingStatus('pending');
+    setExtractedText('');
+    setUploadedReceipt(null);
 
     try {
       // Step 1: Get pre-signed URL
@@ -43,20 +94,20 @@ const UploadArea: React.FC = () => {
 
       const data = await response.json();
 
-      // 🛑 Ensure `data.fileUrl` exists before using it
-      if (!data.url || !data.fileUrl) {
+      if (!data.uploadUrl || !data.fileKey) {
         console.error('Failed to get upload URL:', data);
         alert('Failed to get upload URL');
+        setIsUploading(false);
         return;
       }
 
-      const { url, fileUrl } = data; // ✅ `fileUrl` is now defined here
+      const { uploadUrl, fileKey } = data;
 
-      console.log('🔗 Upload URL:', url);
-      console.log('📂 File URL:', fileUrl);
+      console.log('🔗 Upload URL:', uploadUrl);
+      console.log('📂 File URL:', fileKey);
 
       // Step 2: Upload file to S3
-      const uploadResponse = await fetch(url, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: {
@@ -67,6 +118,7 @@ const UploadArea: React.FC = () => {
       if (!uploadResponse.ok) {
         console.error('Upload to S3 failed:', uploadResponse);
         alert('Upload failed');
+        setIsUploading(false);
         return;
       }
 
@@ -75,18 +127,18 @@ const UploadArea: React.FC = () => {
 
       console.log('🧑‍💻 User from localStorage:', user);
       console.log('📝 Sending data:', {
-        userId: user.id, // Use `.id` instead of `._id`
+        userId: user.id,
         fileName: file.name,
-        fileUrl,
+        fileKey,
       });
 
-      const saveResponse = await fetch('http://localhost:5000/api/upload/save-receipt', {
+      const saveResponse= await fetch('http://localhost:5000/api/upload/save-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id, // Use `.id` not `._id`
+          userId: user.id,
           fileName: file.name,
-          fileUrl,
+          fileKey,
         }),
       });
 
@@ -95,11 +147,20 @@ const UploadArea: React.FC = () => {
         alert('Failed to save receipt');
         return;
       }
-
-      alert('File uploaded and saved successfully!');
+    
+      const saveData = await saveResponse.json();
+      setUploadedReceipt(saveData.receipt);
+      
+      // Start polling for OCR results
+      if (saveData.receipt && saveData.receipt._id) {
+        pollOcrStatus(saveData.receipt._id);
+      } else {
+        setIsUploading(false);
+      }
     } catch (error) {
       console.error('❌ Error during upload:', error);
       alert('Something went wrong, check console for details.');
+      setIsUploading(false);
     }
   };
 
@@ -165,12 +226,24 @@ const UploadArea: React.FC = () => {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Processing...
+              {processingStatus === 'pending' ? 'Uploading...' : 
+               processingStatus === 'processing' ? 'Processing OCR...' : 
+               'Processing...'}
             </div>
           ) : (
             'Process Receipt'
           )}
         </button>
+      )}
+
+      {/* OCR Results Section */}
+      {extractedText && (
+        <div className="mt-6 bg-white rounded-xl p-6 shadow-md">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Extracted Text</h3>
+          <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">{extractedText}</pre>
+          </div>
+        </div>
       )}
     </div>
   );
