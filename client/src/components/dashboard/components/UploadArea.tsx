@@ -34,26 +34,27 @@ const UploadArea: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file) return;
-  
+
     try {
       // Step 1: Get pre-signed URL
       const response = await fetch(
         `http://localhost:5000/api/upload/presigned-url?fileName=${file.name}&fileType=${file.type}`
       );
-  
+
       const data = await response.json();
-  
+
       // 🛑 Ensure `data.fileUrl` exists before using it
       if (!data.url || !data.fileUrl) {
+        console.error('Failed to get upload URL:', data);
         alert('Failed to get upload URL');
         return;
       }
-  
+
       const { url, fileUrl } = data; // ✅ `fileUrl` is now defined here
-  
+
       console.log('🔗 Upload URL:', url);
       console.log('📂 File URL:', fileUrl);
-  
+
       // Step 2: Upload file to S3
       const uploadResponse = await fetch(url, {
         method: 'PUT',
@@ -62,23 +63,24 @@ const UploadArea: React.FC = () => {
           'Content-Type': file.type,
         },
       });
-  
+
       if (!uploadResponse.ok) {
+        console.error('Upload to S3 failed:', uploadResponse);
         alert('Upload failed');
         return;
       }
-  
+
       // Step 3: Save receipt in MongoDB
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
+
       console.log('🧑‍💻 User from localStorage:', user);
       console.log('📝 Sending data:', {
         userId: user.id, // Use `.id` instead of `._id`
         fileName: file.name,
         fileUrl,
       });
-  
-      await fetch('http://localhost:5000/api/upload/save-receipt', {
+
+      const saveResponse = await fetch('http://localhost:5000/api/upload/save-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -87,17 +89,19 @@ const UploadArea: React.FC = () => {
           fileUrl,
         }),
       });
-  
+
+      if (!saveResponse.ok) {
+        console.error('Failed to save receipt in MongoDB:', saveResponse);
+        alert('Failed to save receipt');
+        return;
+      }
+
       alert('File uploaded and saved successfully!');
     } catch (error) {
       console.error('❌ Error during upload:', error);
       alert('Something went wrong, check console for details.');
     }
   };
-  
-
-
-
 
   return (
     <div className="space-y-4">

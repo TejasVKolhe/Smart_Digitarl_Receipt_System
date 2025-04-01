@@ -59,24 +59,24 @@ router.post('/save-receipt', async (req, res) => {
 });
 
 
-// Fetch all receipts for a specific user
-router.get('/receipts/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    console.log('📥 Fetching receipts for userId:', userId);
+// // Fetch all receipts for a specific user
+// router.get('/receipts/:userId', async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+//     console.log('📥 Fetching receipts for userId:', userId);
 
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
+//     if (!userId) {
+//       return res.status(400).json({ error: 'User ID is required' });
+//     }
 
-    const receipts = await Receipt.find({ userId }).sort({ uploadedAt: -1 });
-    console.log('📄 Retrieved receipts:', receipts);
+//     const receipts = await Receipt.find({ userId }).sort({ uploadedAt: -1 });
+//     console.log('📄 Retrieved receipts:', receipts);
 
-    res.json(receipts);
-  } catch (error) {
-    console.error('❌ Error fetching receipts:', error);
-    res.status(500).json({ error: 'Failed to fetch receipts' });
-  }
-});
+//     res.json(receipts);
+//   } catch (error) {
+//     console.error('❌ Error fetching receipts:', error);
+//     res.status(500).json({ error: 'Failed to fetch receipts' });
+//   }
+// });
 
 module.exports = router;

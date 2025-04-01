@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+const { handleCallback } = require('../services/gmailAuth');
 // FIXED: Remove the duplicate passport declaration
 // const passport = require("passport");  <-- THIS LINE CAUSES THE ERROR
 
@@ -172,6 +173,44 @@ router.post('/google', async (req, res) => {
   } catch (err) {
     console.error('Google auth error:', err);
     res.status(500).json({ message: 'Google authentication failed' });
+  }
+});
+
+// @route   GET /api/auth/google/callback
+// @desc    Handle Google OAuth callback
+// @access  Public
+router.get('/google/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    
+    if (!code || !state) {
+      console.error('Missing code or state in Google callback');
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=Missing+required+parameters`);
+    }
+    
+    console.log('Received Google auth callback with code and state');
+    
+    try {
+      // Process the callback and get tokens
+      const { userId, tokens } = await handleCallback(code, state);
+      
+      console.log(`Successfully authenticated user ${userId}`);
+      
+      // Store the refresh token in the user's document
+      await User.findByIdAndUpdate(userId, {
+        googleRefreshToken: tokens.refresh_token,
+        googleAccessToken: tokens.access_token
+      });
+      
+      // Redirect back to the receipts page in the frontend
+      res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=success`);
+    } catch (callbackError) {
+      console.error('Error processing Google callback:', callbackError);
+      res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=${encodeURIComponent(callbackError.message)}`);
+    }
+  } catch (error) {
+    console.error('Unexpected error in Google callback route:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=Server+error`);
   }
 });
 

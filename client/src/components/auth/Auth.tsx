@@ -6,9 +6,15 @@ import { jwtDecode } from "jwt-decode";
 import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../../api/axios';
 
-const GOOGLE_CLIENT_ID = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+// Add this interface at the top of your Auth.tsx file
+interface AuthPageProps {
+  setIsAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
+}
 
-const AuthPage: React.FC = () => {
+const GOOGLE_CLIENT_ID = '100175045498-f3ctomk0sntl6m4ms6aduqf9pki3cf7a.apps.googleusercontent.com'
+
+// Then update your component definition
+const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
   const navigate = useNavigate(); // Move inside component
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -97,21 +103,31 @@ const AuthPage: React.FC = () => {
 
 
   const handleGoogleLogin = async (response: any) => {
+    console.log("Google Login Response:", response);
+
+    if (!response.credential) {
+      setMessage("Google authentication failed: No credential received.");
+      return;
+    }
+
     try {
       const decoded: any = jwtDecode(response.credential);
-      console.log('Google User:', decoded);
+      console.log("Decoded User:", decoded);
 
-      const res = await axiosInstance.post('/auth/google', { token: response.credential });
+      const res = await axiosInstance.post("/auth/google", {
+        token: response.credential,
+      });
 
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("user", JSON.stringify(res.data.user));
 
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (error) {
-      console.error('Google login error:', error);
-      setMessage('Google authentication failed');
+      console.error("Google login error:", error);
+      setMessage("Google authentication failed");
     }
   };
+  
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -147,15 +163,12 @@ const AuthPage: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={() => handleGoogleLogin({ credential: 'sample_google_token' })}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg"
-              >
-                Login with Google
-              </button>
-            </div>
+          <div className="flex justify-center mt-4">
+            <GoogleLogin
+              onSuccess={handleGoogleLogin}
+              onError={() => setMessage("Google authentication failed")}
+            />
+          </div>
             {!isLogin && (
               <InputField
                 label="Username"

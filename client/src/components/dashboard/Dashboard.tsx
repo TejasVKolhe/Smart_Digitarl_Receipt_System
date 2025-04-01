@@ -9,6 +9,7 @@ import SummaryChart from './components/SummaryChart';
 const Dashboard: React.FC = () => {
   interface User {
     username: string;
+    email : string;
   }
 
   const [user, setUser] = useState<User | null>(null);
@@ -29,11 +30,11 @@ const Dashboard: React.FC = () => {
         setUser(JSON.parse(userData));
       } catch (error) {
         console.error('Error parsing user data:', error);
-        setUser({ username: 'User' });
+        setUser({ username: 'User', email : 'User' });
       }
     } else {
       // Use placeholder if no user data
-      setUser({ username: 'User' });
+      setUser({ username: 'User', email : 'User' });
     }
   }, [navigate]); // Add navigate to dependency array
   
@@ -72,7 +73,7 @@ const Dashboard: React.FC = () => {
           </div>
           <div>
             <div className="text-lg font-semibold text-indigo-600">{user.username}</div>
-            <div className="text-gray-500">Email: user@example.com</div> {/* Add email or other info here */}
+            <div className="text-gray-500">{user.email}</div> {/* Add email or other info here */}
             <div className="mt-4">
               <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition duration-200">
                 Edit Profile
