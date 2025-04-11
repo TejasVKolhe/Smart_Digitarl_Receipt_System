@@ -3,6 +3,7 @@ const express = require('express');
 const AWS = require('aws-sdk');
 const Receipt = require('../models/Receipt'); // Import Receipt model
 const { extractTextFromImage } = require('../services/ocrServices'); // Import OCR service
+const gmailService = require('../services/gmail'); // Import Gmail service
 require('dotenv').config();
 
 const router = express.Router();
@@ -59,17 +60,18 @@ router.post('/save-receipt', async (req, res) => {
   const { userId, fileName, fileKey } = req.body;
 
   if (!userId || !fileName || !fileKey) {
-    console.error('❌ Missing required fields:', { userId, fileName, fileUrl });
+    console.error('❌ Missing required fields:', { userId, fileName, fileKey });
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
-    // Create a new receipt with pending status
+    // Create a new receipt with pending status and explicitly set source to 'upload'
     const newReceipt = new Receipt({ 
       userId, 
       fileName, 
       fileKey,
-      processingStatus: 'pending'
+      processingStatus: 'pending',
+      source: 'upload' // Explicitly set the source type
     });
     await newReceipt.save();
     
@@ -87,57 +89,146 @@ router.post('/save-receipt', async (req, res) => {
   }
 });
 
+// Gmail Connection endpoints
+router.post('/connect-gmail', async (req, res) => {
+  const { userId, authCode } = req.body;
+  
+  if (!userId || !authCode) {
+    return res.status(400).json({ error: 'Missing userId or authCode' });
+  }
+
+  try {
+    // In a real implementation, you would exchange the authCode for tokens
+    // and store them securely associated with the user
+    // For now, we'll simulate this process
+    
+    // Update user's Gmail connection status in your database
+    // This is a placeholder - you'd need a User model and update logic
+    // await User.findByIdAndUpdate(userId, { gmailConnected: true, gmailTokens: tokens });
+    
+    res.json({ success: true, message: 'Gmail connected successfully' });
+  } catch (error) {
+    console.error('❌ Error connecting to Gmail:', error);
+    res.status(500).json({ error: 'Failed to connect to Gmail' });
+  }
+});
+
+// Fetch email receipts from Gmail
+router.get('/gmail-receipts/:userId', async (req, res) => {
+  const { userId } = req.params;
+  
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+  
+  try {
+    // In a real implementation, you would:
+    // 1. Get the stored Gmail tokens for this user
+    // 2. Use them to query the Gmail API for emails
+    // 3. Filter for receipts (based on sender, subject, etc.)
+    // 4. Process and return the results
+    
+    // For now, we'll just save a sample receipt from "Gmail"
+    const gmailReceipt = new Receipt({
+      userId,
+      fileName: 'Email Receipt',
+      processingStatus: 'completed',
+      source: 'gmail',
+      extractedText: 'Sample email receipt content from your Gmail account',
+      isProcessed: true,
+      // In a real implementation, you'd have more fields like:
+      // emailId, sender, subject, receivedDate, etc.
+    });
+    
+    await gmailReceipt.save();
+    
+    // In a real implementation, you'd return multiple receipts
+    res.json({ 
+      receipts: [gmailReceipt],
+      message: 'Gmail receipts fetched successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error fetching Gmail receipts:', error);
+    res.status(500).json({ error: 'Failed to fetch Gmail receipts' });
+  }
+});
+
+// Check Gmail connection status
+router.get('/gmail-status/:userId', async (req, res) => {
+  const { userId } = req.params;
+  
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+  
+  try {
+    // In a real implementation, you would check if the user has valid Gmail tokens
+    // For demo purposes, let's return a mock status
+    // const user = await User.findById(userId);
+    // const isConnected = user && user.gmailConnected;
+    
+    // Mock response for now
+    const isConnected = false; // Default to false, frontend will prompt connection
+    
+    res.json({ connected: isConnected });
+  } catch (error) {
+    console.error('❌ Error checking Gmail connection status:', error);
+    res.status(500).json({ error: 'Failed to check Gmail connection status' });
+  }
+});
+
 // Process OCR for a receipt
 async function processReceiptOCR(receiptId, fileKey) {
   try {
+    console.log(`Starting OCR processing for receipt ${receiptId} with fileKey ${fileKey}`);
+    
+    // Update status to processing
+    await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'processing' });
+    
     // Generate presigned URL for OCR downloading
     const downloadParams = {
       Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: fileKey,
-      Expires: 600
+      Expires: 900, // 15 minutes to allow for long processing
     };
+    
     const presignedUrl = await s3.getSignedUrlPromise('getObject', downloadParams);
-    // Update status to processing
-    await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'processing' });
+    console.log(`Generated presigned download URL for OCR processing (first 100 chars): ${presignedUrl.substring(0, 100)}...`);
     
-    // Extract text from image
-    const extractedText = await extractTextFromImage(presignedUrl);
-    console.log('📄 Extracted text:', extractedText); // Debug log
-    
-    // Update receipt with extracted text
-    await Receipt.findByIdAndUpdate(receiptId, {
-      extractedText,
-      processingStatus: 'completed'
-    });
-    
-    console.log(`✅ OCR processing completed for receipt ${receiptId}`);
+    // Extract text from image with proper error handling
+    try {
+      const extractedText = await extractTextFromImage(presignedUrl);
+      console.log(`OCR extraction successful for receipt ${receiptId}, extracted ${extractedText.length} characters`);
+      
+      // Update receipt with extracted text
+      await Receipt.findByIdAndUpdate(receiptId, {
+        extractedText,
+        processingStatus: 'completed',
+        isProcessed: true
+      });
+      
+      console.log(`✅ OCR processing completed for receipt ${receiptId}`);
+    } catch (ocrError) {
+      console.error(`❌ OCR extraction error for receipt ${receiptId}:`, ocrError.message);
+      
+      // Update status to failed with error message
+      await Receipt.findByIdAndUpdate(receiptId, { 
+        processingStatus: 'failed',
+        processingError: ocrError.message 
+      });
+      
+      throw ocrError; // Re-throw for overall error handling
+    }
   } catch (error) {
     console.error(`❌ Error processing OCR for receipt ${receiptId}:`, error);
     
-    // Update status to failed
-    await Receipt.findByIdAndUpdate(receiptId, { processingStatus: 'failed' });
+    // Update status to failed if not already done
+    await Receipt.findByIdAndUpdate(receiptId, { 
+      processingStatus: 'failed',
+      processingError: error.message 
+    });
   }
 }
-
-// // Fetch all receipts for a specific user
-// router.get('/receipts/:userId', async (req, res) => {
-//   try {
-//     const { userId } = req.params;
-//     console.log('📥 Fetching receipts for userId:', userId);
-
-//     if (!userId) {
-//       return res.status(400).json({ error: 'User ID is required' });
-//     }
-
-//     const receipts = await Receipt.find({ userId }).sort({ uploadedAt: -1 });
-//     console.log('📄 Retrieved receipts:', receipts);
-
-//     res.json(receipts);
-//   } catch (error) {
-//     console.error('❌ Error fetching receipts:', error);
-//     res.status(500).json({ error: 'Failed to fetch receipts' });
-//   }
-// });
 
 // New endpoint to get OCR status and results
 router.get('/receipt-ocr/:receiptId', async (req, res) => {

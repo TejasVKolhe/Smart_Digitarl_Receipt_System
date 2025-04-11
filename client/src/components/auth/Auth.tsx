@@ -101,7 +101,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
     }
   };
 
-
   const handleGoogleLogin = async (response: any) => {
     console.log("Google Login Response:", response);
 
@@ -118,16 +117,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
         token: response.credential,
       });
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      if (res?.data?.user) {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("user", JSON.stringify(res.data.user));
 
-      navigate("/dashboard");
+        navigate("/dashboard");
+      }
     } catch (error) {
       console.error("Google login error:", error);
       setMessage("Google authentication failed");
     }
   };
-  
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>

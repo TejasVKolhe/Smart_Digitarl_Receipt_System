@@ -1,553 +1,331 @@
 const express = require('express');
-const passport = require('passport');
-const { fetchReceipts, fetchRecentEmails } = require('../services/gmailService');
-const Receipt = require('../models/Receipt');
-const { google } = require('googleapis');
-const fs = require('fs');
-const path = require('path');
-const gmailService = require('../services/gmailService');
-
 const router = express.Router();
+const Receipt = require('../models/Receipt');
+const User = require('../models/User');
+// Replace the gmailServices import with the new gmail module
+const gmailService = require('../services/gmail');
 
-/**
- * @route   GET /api/receipts/fetch
- * @desc    Fetch new receipts from Gmail and store in DB
- * @access  Private
- */
-router.get(
-  '/fetch',
-  passport.authenticate('jwt', { session: false }),
-  async (req, res) => {
-    try {
-      const receipts = await fetchReceipts(req.user.id); // Capture the return value
-      res.status(200).json({ message: 'Receipts fetched successfully', receipts });
-    } catch (error) {
-      console.error('Error fetching receipts:', error);
-      res.status(500).json({ error: 'Failed to fetch receipts' });
+// Fetch all receipts for a user
+router.get('/all/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
     }
+    
+    const receipts = await Receipt.find({ userId }).sort({ createdAt: -1 });
+    
+    // Process receipts to ensure proper S3 URLs
+    const processedReceipts = receipts.map(receipt => {
+      // If fileUrl exists but doesn't have the full S3 path, fix it
+      if (receipt.fileUrl && !receipt.fileUrl.includes('amazonaws.com')) {
+        // Check if it's already a full URL
+        if (!receipt.fileUrl.startsWith('http')) {
+          // It's just a key, convert to full URL
+          const path = receipt.fileUrl.startsWith('uploads/') 
+            ? receipt.fileUrl 
+            : `uploads/${receipt.fileUrl}`;
+            
+          receipt.fileUrl = `https://digital-receipt-manager.s3.ap-south-1.amazonaws.com/${path}`;
+        }
+      }
+      
+      // Same for fileKey
+      if (receipt.fileKey && !receipt.fileKey.includes('amazonaws.com')) {
+        if (!receipt.fileKey.startsWith('http')) {
+          const path = receipt.fileKey.startsWith('uploads/') 
+            ? receipt.fileKey 
+            : `uploads/${receipt.fileKey}`;
+            
+          receipt.fileKey = `https://digital-receipt-manager.s3.ap-south-1.amazonaws.com/${path}`;
+        }
+      }
+      
+      return receipt;
+    });
+    
+    res.status(200).json({ receipts: processedReceipts });
+  } catch (error) {
+    console.error('Error fetching receipts:', error);
+    res.status(500).json({ error: 'Failed to fetch receipts' });
   }
-);
+});
 
-/**
- * @route   GET /api/receipts/fetch/:userId
- * @desc    Get receipts for a specific user and store in DB
- * @access  Public (consider adding authentication here too)
- */
+// Fetch receipts by source
+router.get('/source/:userId/:source', async (req, res) => {
+  try {
+    const { userId, source } = req.params;
+    
+    if (!userId || !source) {
+      return res.status(400).json({ error: 'User ID and source are required' });
+    }
+    
+    const receipts = await Receipt.find({ 
+      userId, 
+      source 
+    }).sort({ createdAt: -1 });
+    
+    res.json({ receipts });
+  } catch (error) {
+    console.error(`Error fetching ${req.params.source} receipts:`, error);
+    res.status(500).json({ error: `Failed to fetch ${req.params.source} receipts` });
+  }
+});
+
+// Fetch Gmail receipts
 router.get('/fetch/:userId', async (req, res) => {
   try {
-    await fetchReceipts(req.params.userId);
-    console.log("Receipt for ID : ", req.params.userId);
-    // Fetch saved receipts from MongoDB
-    const receipts = await Receipt.find({ userId: req.params.userId });
-
-    res.status(200).json(receipts);
-  } catch (error) {
-    console.error('❌ Error fetching receipts:', error);
-    res.status(500).json({ error: 'Failed to fetch receipts' });
-  }
-});
-
-/**
- * @route   GET /api/receipts/uploaded/:userId
- * @desc    Get all uploaded receipts for a user
- * @access  Private (should be authenticated)
- */
-router.get('/uploaded/:userId', async (req, res) => {
-  try {
-    const receipts = await Receipt.find({ 
-      userId: req.params.userId,
-      fileUrl: { $exists: true } // Only get receipts with fileUrl (uploaded ones)
-    }).sort({ uploadedAt: -1 });
+    const { userId } = req.params;
     
-    res.status(200).json(receipts);
-  } catch (error) {
-    console.error('❌ Error fetching uploaded receipts:', error);
-    res.status(500).json({ error: 'Failed to fetch receipts' });
-  }
-});
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
 
-/**
- * @route   GET /api/receipts/email/:userId
- * @desc    Get all email-based receipts for a user from Gmail
- * @access  Private (should be authenticated)
- */
-router.get('/email/:userId', async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    console.log(`📧 Fetching email receipts for user ID: ${userId}`);
+    // Find user and check if they have Gmail tokens
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (!user.gmailTokens || !user.gmailTokens.access_token) {
+      return res.status(400).json({ 
+        error: 'Gmail not connected', 
+        message: 'Please connect your Gmail account first' 
+      });
+    }
     
     try {
-      // Fetch more emails (50) so we have a better chance of finding receipts
-      const emails = await gmailService.fetchRecentEmails(userId, 50);
-      console.log(`📬 Found ${emails.length} total emails, filtering for receipts...`);
+      // Validate and refresh tokens if needed
+      const validTokens = await gmailService.validateAndRefreshTokens(user.gmailTokens);
       
-      // Define keywords and domains that indicate receipts
-      const receiptKeywords = [
-        'receipt', 'invoice', 'order', 'payment', 'transaction', 'purchase',
-        'bill', 'statement', 'paid', 'confirmation', 'booking', 'ticket',
-        // Indian specific keywords
-        'tax invoice', 'gst', 'gst invoice', 'challan', 'subscription',
-        'recharge', 'payment received', 'bank statement', 'credit card', 'debit card',
-        'बिल', 'रसीद', 'भुगतान'  // Hindi for bill, receipt, payment
-      ];
+      // Update user tokens if they were refreshed
+      if (validTokens !== user.gmailTokens) {
+        user.gmailTokens = validTokens;
+        await user.save();
+      }
       
-      const receiptDomains = [
-        // International
-        'amazon', 'paypal', 'stripe', 'shopify', 'uber', 'lyft', 'doordash',
-        'grubhub', 'instacart', 'walmart', 'target', 'bestbuy', 'apple',
-        'microsoft', 'netflix', 'hulu', 'spotify', 'airbnb', 'booking.com',
-        'expedia', 'hotels.com', 'ebay', 'etsy', 'steam', 'playstation',
+      // Use tokens to fetch receipts from Gmail
+      const emailReceipts = await gmailService.getEmailReceipts(validTokens);
+      
+      // Process and save email receipts to database
+      const savedReceipts = [];
+      
+      for (const email of emailReceipts) {
+        // Check if this email is already saved as a receipt
+        const existingReceipt = await Receipt.findOne({ 
+          userId, 
+          'emailMetadata.emailId': email.emailId 
+        });
         
-        // Indian domains
-        'flipkart', 'myntra', 'swiggy', 'zomato', 'bigbasket', 'grofers',
-        'makemytrip', 'irctc', 'indigo', 'spicejet', 'goibibo', 'yatra',
-        'phonepe', 'paytm', 'gpay', 'googleplay', 'jio', 'airtel', 'vodafone',
-        'reliancedigital', 'tataneu', 'amazepay', 'icici', 'hdfc', 'sbi',
-        'axisbank', 'kotak', 'snapdeal', 'meesho', 'ola', 'rapido', 'urbancompany',
-        'lenskart', 'nykaa', 'ajio', 'tatacliq', 'shopclues', 'cred',
-        'dunzo', 'blinkit', 'zepto', 'jiomart', 'dmart', 'reliance', 'adani',
-        'pepperfry', 'bookmyshow', 'easemytrip', 'cleartrip', '1mg', 'pharmeasy',
-        'medlife', 'netmeds', 'cult.fit', 'policybazaar', 'acko', 'bajajfinserv',
-        'hdfcbank', 'icicibank', 'sbicard', 'yesbank', 'pnbindia', 'federalbank',
-        'bsesdelhi', 'tatapower', 'adanielectricity', 'mahadiscom', 'bescom',
-        'trai', 'upstox', 'zerodha', 'groww', 'smallcase', 'kuvera'
-      ];
+        if (!existingReceipt) {
+          // Create new receipt from email
+          const newReceipt = new Receipt({
+            userId,
+            fileName: email.subject || 'Email Receipt',
+            processingStatus: 'completed',
+            source: 'gmail',
+            extractedText: email.content || '',
+            isProcessed: true,
+            emailMetadata: {
+              emailId: email.emailId,
+              sender: email.sender,
+              subject: email.subject,
+              receivedDate: email.receivedDate
+            }
+          });
+          
+          await newReceipt.save();
+          savedReceipts.push(newReceipt);
+        } else {
+          savedReceipts.push(existingReceipt);
+        }
+      }
       
-      // Filter the emails to only include receipts
-      const receiptEmails = emails.filter(email => {
-        const subject = (email.subject || '').toLowerCase();
-        const from = (email.from || '').toLowerCase();
-        const snippet = (email.snippet || '').toLowerCase();
-        
-        // Check if any receipt keywords are in the subject or snippet
-        const hasKeyword = receiptKeywords.some(keyword => 
-          subject.includes(keyword.toLowerCase()) || 
-          snippet.includes(keyword.toLowerCase())
-        );
-        
-        // Check if the email is from a known receipt domain
-        const isFromReceiptDomain = receiptDomains.some(domain => 
-          from.includes(domain.toLowerCase())
-        );
-        
-        return hasKeyword || isFromReceiptDomain;
-      });
-      
-      console.log(`📊 Found ${receiptEmails.length} receipt emails out of ${emails.length} total`);
-      
-      // Add a property to indicate this is a receipt
-      const enhancedReceipts = receiptEmails.map(email => ({
-        ...email,
-        isReceipt: true
-      }));
-      
-      return res.status(200).json({
-        success: true,
-        message: `Found ${receiptEmails.length} receipt emails in your Gmail account`,
-        receipts: enhancedReceipts
+      res.json({ 
+        message: `${savedReceipts.length} receipts fetched from Gmail`,
+        receipts: savedReceipts
       });
     } catch (gmailError) {
-      console.error('⚠️ Gmail fetch failed:', gmailError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch emails from Gmail: ' + gmailError.message
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in email receipts endpoint:', error);
-    return res.status(500).json({ 
-      success: false,
-      message: error.message || 'Failed to fetch email receipts'
-    });
-  }
-});
-
-/**
- * @route   GET /api/receipts/email/:userId/:emailId
- * @desc    Get full details for a specific email including attachments
- * @access  Private
- */
-router.get('/email/:userId/:emailId', async (req, res) => {
-  try {
-    const { userId, emailId } = req.params;
-    console.log(`📧 Fetching full details for email ID: ${emailId}`);
-    
-    try {
-      // Get authorized client
-      const auth = await gmailService.getAuthorizedClient(userId);
-      const gmail = google.gmail({ version: 'v1', auth });
+      console.error('Gmail service error:', gmailError);
       
-      // Get the full message
-      const messageResponse = await gmail.users.messages.get({
-        userId: 'me',
-        id: emailId,
-        format: 'full'
-      });
-      
-      // Extract headers
-      const headers = {};
-      if (messageResponse.data.payload && messageResponse.data.payload.headers) {
-        messageResponse.data.payload.headers.forEach(header => {
-          headers[header.name.toLowerCase()] = header.value;
+      // Check for authentication errors
+      if (gmailError.message.includes('invalid tokens') || 
+          gmailError.message.includes('connection failed')) {
+        // Reset Gmail connection
+        user.gmailConnected = false;
+        await user.save();
+        
+        return res.status(401).json({ 
+          error: 'Gmail authentication failed', 
+          message: 'Please reconnect your Gmail account'
         });
       }
       
-      // Extract content
-      let content = '';
-      
-      // Helper function to extract text from parts
-      const extractTextFromParts = (parts) => {
-        if (!parts) return '';
-        
-        let text = '';
-        for (const part of parts) {
-          if (part.mimeType === 'text/plain' && part.body && part.body.data) {
-            const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            text += decoded;
-          } else if (part.mimeType === 'text/html' && part.body && part.body.data) {
-            const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            text += decoded;
-            break;  // Prefer HTML content if available
-          } else if (part.parts) {
-            text += extractTextFromParts(part.parts);
-          }
-        }
-        return text;
-      };
-      
-      // Get content from payload
-      if (messageResponse.data.payload) {
-        if (messageResponse.data.payload.mimeType === 'text/plain' && messageResponse.data.payload.body && messageResponse.data.payload.body.data) {
-          content = Buffer.from(messageResponse.data.payload.body.data, 'base64').toString('utf-8');
-        } else if (messageResponse.data.payload.mimeType === 'text/html' && messageResponse.data.payload.body && messageResponse.data.payload.body.data) {
-          content = Buffer.from(messageResponse.data.payload.body.data, 'base64').toString('utf-8');
-        } else if (messageResponse.data.payload.parts) {
-          content = extractTextFromParts(messageResponse.data.payload.parts);
-        }
-      }
-      
-      // Extract attachments
-      const attachments = [];
-      
-      const processPartsForAttachments = (parts) => {
-        if (!parts) return;
-        
-        for (const part of parts) {
-          if (part.filename && part.filename.length > 0 && part.body && part.body.attachmentId) {
-            attachments.push({
-              id: part.body.attachmentId,
-              filename: part.filename,
-              mimeType: part.mimeType,
-              size: part.body.size || 0
-            });
-          }
-          
-          if (part.parts) {
-            processPartsForAttachments(part.parts);
-          }
-        }
-      };
-      
-      if (messageResponse.data.payload && messageResponse.data.payload.parts) {
-        processPartsForAttachments(messageResponse.data.payload.parts);
-      }
-      
-      // Create email object
-      const emailData = {
-        emailId: messageResponse.data.id,
-        subject: headers.subject || 'No Subject',
-        from: headers.from || 'Unknown Sender',
-        receivedAt: headers.date || new Date().toISOString(),
-        snippet: messageResponse.data.snippet || '',
-        content: content || '<p>No content available</p>',
-        attachments: attachments
-      };
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Email details fetched successfully',
-        email: emailData
-      });
-    } catch (error) {
-      console.error(`Error fetching email details for ${emailId}:`, error);
-      return res.status(500).json({
-        success: false,
-        message: `Failed to fetch email details: ${error.message}`
-      });
+      throw gmailError; // rethrow for general error handling
     }
   } catch (error) {
-    console.error('❌ Error fetching email details:', error);
-    return res.status(500).json({ 
-      success: false,
-      message: error.message || 'Failed to fetch email details'
+    console.error('Error fetching Gmail receipts:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch receipts from Gmail',
+      message: error.message
     });
   }
 });
 
-/**
- * @route   GET /api/receipts/email/:userId/:emailId/attachment/:attachmentId
- * @desc    Get a specific attachment from an email
- * @access  Private
- */
-router.get('/email/:userId/:emailId/attachment/:attachmentId', async (req, res) => {
+// Add or update the route to get receipt details by ID
+// Simplified route that can handle both email and uploaded receipts
+router.get('/:userId/:receiptId', async (req, res) => {
   try {
-    const { userId, emailId, attachmentId } = req.params;
-    console.log(`📎 Fetching attachment ${attachmentId} from email ${emailId}`);
-    
-    // Get authorized client
-    const auth = await gmailService.getAuthorizedClient(userId);
-    const gmail = google.gmail({ version: 'v1', auth });
-    
-    // Get the attachment
-    const attachment = await gmail.users.messages.attachments.get({
-      userId: 'me',
-      messageId: emailId,
-      id: attachmentId
+    const { userId, receiptId } = req.params;
+
+    if (!userId || !receiptId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and Receipt ID are required'
+      });
+    }
+
+    console.log(`Looking for receipt: userId=${userId}, receiptId=${receiptId}`);
+
+    // Find the receipt without filtering by source
+    const receipt = await Receipt.findOne({
+      userId,
+      _id: receiptId
     });
-    
-    if (!attachment.data || !attachment.data.data) {
+
+    if (!receipt) {
+      console.log(`Receipt not found: userId=${userId}, receiptId=${receiptId}`);
       return res.status(404).json({
         success: false,
-        message: 'Attachment not found'
+        message: 'Receipt not found'
       });
     }
-    
-    // Convert from base64url to base64
-    const base64Data = attachment.data.data.replace(/-/g, '+').replace(/_/g, '/');
-    
-    // Send as binary data
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    // Get filename and MIME type
-    const messageResponse = await gmail.users.messages.get({
-      userId: 'me',
-      id: emailId,
-      format: 'full'
-    });
-    
-    let filename = 'attachment';
-    let mimeType = 'application/octet-stream';
-    
-    const findAttachmentInfo = (parts) => {
-      if (!parts) return false;
-      
-      for (const part of parts) {
-        if (part.body && part.body.attachmentId === attachmentId) {
-          filename = part.filename || 'attachment';
-          mimeType = part.mimeType || 'application/octet-stream';
-          return true;
-        }
-        
-        if (part.parts && findAttachmentInfo(part.parts)) {
-          return true;
-        }
-      }
-      
-      return false;
-    };
-    
-    if (messageResponse.data.payload && messageResponse.data.payload.parts) {
-      findAttachmentInfo(messageResponse.data.payload.parts);
-    }
-    
-    // Set appropriate headers
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    
-    // Send the file
-    res.send(buffer);
-  } catch (error) {
-    console.error('❌ Error fetching attachment:', error);
-    return res.status(500).json({ 
-      success: false,
-      message: error.message || 'Failed to fetch attachment'
-    });
-  }
-});
 
-/**
- * @route   GET /api/receipts/debug/recent-emails/:userId
- * @desc    Debug - fetch 5 most recent emails (any type) to verify Gmail API works
- * @access  Private
- */
-router.get('/debug/recent-emails/:userId', async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    console.log(`🐞 Debug: Fetching recent emails for user: ${userId}`);
+    console.log(`Receipt found: ${receipt.subject || receipt.fileName}`);
     
-    // Check if token file exists
-    const tokenPath = path.join(__dirname, '..', 'tokens', `${userId}.json`);
-    
-    if (!fs.existsSync(tokenPath)) {
-      console.error(`🔴 Token file not found: ${tokenPath}`);
-      return res.status(401).json({
-        success: false,
-        message: 'Gmail authentication required. Please connect your account first.',
-        emails: []
-      });
-    }
-    
-    // Read token file
-    const tokenContent = fs.readFileSync(tokenPath);
-    const credentials = JSON.parse(tokenContent);
-    
-    // Create OAuth2 client
-    const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GMAIL_CREDENTIALS).web;
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-    
-    // Set credentials
-    oAuth2Client.setCredentials(credentials);
-    
-    // Create Gmail API client
-    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
-    
-    // List recent messages
-    const response = await gmail.users.messages.list({
-      userId: 'me',
-      maxResults: 5 // Limit to 5 for debugging
-    });
-    
-    if (!response.data.messages || response.data.messages.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: 'No emails found in your Gmail account',
-        emails: []
-      });
-    }
-    
-    // Process emails to get details
-    const emails = [];
-    
-    for (const message of response.data.messages) {
-      try {
-        // Get full message details
-        const messageDetails = await gmail.users.messages.get({
-          userId: 'me',
-          id: message.id,
-          format: 'full'
-        });
-        
-        // Extract headers
-        const headers = {};
-        if (messageDetails.data.payload && messageDetails.data.payload.headers) {
-          messageDetails.data.payload.headers.forEach(header => {
-            headers[header.name.toLowerCase()] = header.value;
-          });
-        }
-        
-        // Add to results
-        emails.push({
-          id: message.id,
-          snippet: messageDetails.data.snippet,
-          subject: headers.subject || 'No Subject',
-          from: headers.from || 'Unknown Sender',
-          receivedAt: headers.date || new Date().toISOString()
-        });
-      } catch (err) {
-        console.error(`Error processing message ${message.id}:`, err);
-      }
-    }
-    
-    console.log(`✅ Successfully fetched ${emails.length} recent emails`);
-    return res.status(200).json({
+    res.json({
       success: true,
-      message: `Found ${emails.length} recent emails in your Gmail account`,
-      emails
+      receipt
     });
   } catch (error) {
-    console.error('Error in debug endpoint:', error);
-    return res.status(500).json({
+    console.error('Error fetching receipt:', error);
+    res.status(500).json({
       success: false,
-      message: error.message || 'Error fetching recent emails',
-      error: error.stack
+      message: 'Failed to fetch receipt details',
+      error: error.message
     });
   }
 });
 
-/**
- * Fetches full email content including attachments
- * @param {string} userId - User ID
- * @param {string} emailId - Email ID
- * @returns {Promise<Object>} Complete email with content and attachments
- */
-async function fetchEmailDetails(userId, emailId) {
-  console.log(`📧 Fetching complete details for email: ${emailId}`);
-  
+// Add route to update receipt details
+router.put('/:userId/:receiptId', async (req, res) => {
   try {
-    // Get authorized client
-    const auth = await getAuthorizedClient(userId);
-    const gmail = google.gmail({ version: 'v1', auth });
+    const { userId, receiptId } = req.params;
+    const updateData = req.body;
     
-    // Get the full message
-    const messageResponse = await gmail.users.messages.get({
-      userId: 'me',
-      id: emailId,
-      format: 'full'
+    // Find the receipt
+    const receipt = await Receipt.findOne({
+      userId,
+      _id: receiptId
     });
     
-    // Extract basic content
-    const emailData = extractEmailContent(messageResponse.data);
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Receipt not found'
+      });
+    }
     
-    // Get attachments if any
-    const attachments = [];
+    // Update the fields
+    if (updateData.vendor) receipt.vendor = updateData.vendor;
+    if (updateData.amount) receipt.amount = updateData.amount;
+    if (updateData.currency) receipt.currency = updateData.currency;
+    if (updateData.category) receipt.category = updateData.category;
+    if (updateData.notes !== undefined) receipt.notes = updateData.notes;
     
-    // Process parts to find attachments
-    const processPartsForAttachments = (parts) => {
-      if (!parts) return;
+    await receipt.save();
+    
+    res.json({
+      success: true,
+      message: 'Receipt updated successfully',
+      receipt
+    });
+  } catch (error) {
+    console.error('Error updating receipt:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update receipt',
+      error: error.message
+    });
+  }
+});
+
+// Add route to reprocess a receipt
+router.post('/:userId/:receiptId/reprocess', async (req, res) => {
+  try {
+    const { userId, receiptId } = req.params;
+    
+    // Find the receipt
+    const receipt = await Receipt.findOne({
+      userId,
+      _id: receiptId
+    });
+    
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Receipt not found'
+      });
+    }
+    
+    // Re-process text extraction if it's an uploaded receipt with extractedText
+    if (receipt.extractedText) {
+      const { extractVendor, extractAmounts, extractDate } = require('../services/textExtraction');
       
-      for (const part of parts) {
-        // Check if this part is an attachment
-        if (part.filename && part.filename.length > 0 && part.body && part.body.attachmentId) {
-          attachments.push({
-            id: part.body.attachmentId,
-            filename: part.filename,
-            mimeType: part.mimeType,
-            size: part.body.size || 0
-          });
-        }
-        
-        // Process nested parts recursively
-        if (part.parts) {
-          processPartsForAttachments(part.parts);
+      // Get the existing extracted text
+      const extractedText = receipt.extractedText;
+      
+      // Extract information from the text
+      const vendor = extractVendor('', '', extractedText) || receipt.vendor;
+      const { amount, currency } = extractAmounts(extractedText, '') || { amount: receipt.amount, currency: receipt.currency };
+      const date = extractDate(extractedText) || receipt.receiptDate;
+      
+      // Update the receipt with the new information
+      if (vendor) receipt.vendor = vendor;
+      if (amount) receipt.amount = amount;
+      if (currency) receipt.currency = currency;
+      if (date) receipt.receiptDate = date;
+      
+      // Set category based on vendor if possible
+      if (vendor && !receipt.category) {
+        const vendorLower = vendor.toLowerCase();
+        if (vendorLower.includes('amazon') || vendorLower.includes('flipkart') || vendorLower.includes('store')) {
+          receipt.category = 'Shopping';
+        } else if (vendorLower.includes('restaurant') || vendorLower.includes('food') || vendorLower.includes('swiggy') || vendorLower.includes('zomato')) {
+          receipt.category = 'Food & Dining';
+        } else if (vendorLower.includes('travel') || vendorLower.includes('air') || vendorLower.includes('hotel')) {
+          receipt.category = 'Travel';
         }
       }
-    };
-    
-    // Check if message has parts
-    if (messageResponse.data.payload && messageResponse.data.payload.parts) {
-      processPartsForAttachments(messageResponse.data.payload.parts);
-    }
-    
-    // Add attachments to email data
-    emailData.attachments = attachments;
-    
-    // If there are any attachments, process them
-    if (attachments.length > 0) {
-      console.log(`📎 Found ${attachments.length} attachments in email`);
       
-      // Add a function to get attachment data
-      emailData.getAttachment = async (attachmentId) => {
-        try {
-          const attachment = await gmail.users.messages.attachments.get({
-            userId: 'me',
-            messageId: emailId,
-            id: attachmentId
-          });
-          
-          // Return base64 data
-          return attachment.data.data;
-        } catch (error) {
-          console.error(`Error fetching attachment ${attachmentId}:`, error);
-          throw error;
-        }
-      };
+      await receipt.save();
     }
     
-    return emailData;
+    res.json({
+      success: true,
+      message: 'Receipt reprocessed successfully',
+      receipt
+    });
   } catch (error) {
-    console.error(`Error fetching email details for ${emailId}:`, error);
-    throw error;
+    console.error('Error reprocessing receipt:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reprocess receipt',
+      error: error.message
+    });
   }
-}
+});
 
 module.exports = router;

@@ -1,172 +1,170 @@
 const express = require('express');
 const router = express.Router();
-const { getAuthUrl, handleCallback, getAuthorizedClient } = require('../services/gmailAuth');
 const User = require('../models/User');
+const Receipt = require('../models/Receipt');
+// Import the Gmail service
+const gmailService = require('../services/gmail');
 
-/**
- * @route   GET /api/gmail/auth
- * @desc    Get Gmail authorization URL
- * @access  Private
- */
+// Get Gmail authentication URL
 router.get('/auth', async (req, res) => {
   try {
-    const userId = req.query.userId || req.user?.id;
+    // Check if environment variables are present
+    const requiredEnvVars = [
+      'GMAIL_CLIENT_ID', 
+      'GMAIL_CLIENT_SECRET', 
+      'GMAIL_REDIRECT_URI'
+    ];
     
-    if (!userId) {
-      return res.status(400).json({ 
-        error: 'User ID required',
-        message: 'Please provide a userId query parameter'
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+      return res.status(500).json({ 
+        error: 'Gmail API configuration missing', 
+        message: 'Gmail integration is not properly configured. Please contact the administrator.'
       });
     }
-    
-    // This should now generate a URL pointing to the correct callback
-    const authUrl = getAuthUrl(userId);
-    console.log(`Generated auth URL for user ${userId}: ${authUrl}`);
-    res.status(200).json({ authUrl });
-  } catch (error) {
-    console.error('Error getting auth URL:', error);
-    res.status(500).json({ 
-      error: 'Server error', 
-      message: error.message 
-    });
-  }
-});
 
-/**
- * @route   GET /api/gmail/callback
- * @desc    Handle Gmail OAuth callback
- * @access  Public
- */
-router.get('/callback', async (req, res) => {
-  try {
-    console.log('Gmail callback received:', req.query);
-    const { code, state } = req.query;
-    
-    // Use the CLIENT_URL from server.js
-    const frontendUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    
-    if (!code || !state) {
-      console.error('Missing code or state in callback');
-      return res.redirect(`${frontendUrl}/dashboard/receipts?auth=error&message=Missing+required+parameters`);
-    }
-    
-    try {
-      // Process the callback
-      console.log('Processing callback with code and state');
-      const { userId, tokens } = await handleCallback(code, state);
-      
-      console.log(`Successfully authenticated user ${userId}`);
-      
-      // Store the refresh token in the user's document
-      await User.findByIdAndUpdate(userId, {
-        googleRefreshToken: tokens.refresh_token,
-        googleAccessToken: tokens.access_token,
-        googleTokenUpdatedAt: new Date()
-      });
-      
-      console.log(`Stored tokens for user ${userId}, redirecting to frontend`);
-      
-      // Simple direct redirect
-      return res.redirect(`${frontendUrl}/dashboard/receipts?auth=success&timestamp=${Date.now()}`);
-    } catch (callbackError) {
-      console.error('Error processing callback:', callbackError);
-      return res.redirect(`${frontendUrl}/dashboard/receipts?auth=error&message=${encodeURIComponent(callbackError.message)}`);
-    }
-  } catch (error) {
-    console.error('Unexpected error in callback route:', error);
-    const frontendUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    return res.redirect(`${frontendUrl}/dashboard/receipts?auth=error&message=Server+error`);
-  }
-});
-
-/**
- * @route   GET /api/gmail/check-auth
- * @desc    Check if user is authenticated with Gmail
- * @access  Private
- */
-router.get('/check-auth', async (req, res) => {
-  try {
-    const userId = req.user?.id || req.query.userId;
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
-    }
-    
-    try {
-      await getAuthorizedClient(userId);
-      res.status(200).json({ authenticated: true });
-    } catch (error) {
-      // User needs to authenticate
-      const authUrl = getAuthUrl(userId);
-      res.status(200).json({ authenticated: false, authUrl });
-    }
-  } catch (error) {
-    console.error('Error checking auth:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-/**
- * @route   GET /api/gmail/auth-status
- * @desc    Check if user is authenticated with Gmail
- * @access  Private
- */
-router.get('/auth-status/:userId', async (req, res) => {
-  try {
-    const userId = req.params.userId;
+    const { userId } = req.query;
     
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
     
-    // Find user and check for Gmail tokens
-    const user = await User.findById(userId).select('googleRefreshToken googleTokenUpdatedAt');
-    
+    // Verify user exists
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    return res.status(200).json({
-      isConnected: !!user.googleRefreshToken,
-      lastUpdated: user.googleTokenUpdatedAt || null
-    });
+    // Generate the authentication URL
+    const authUrl = gmailService.getAuthUrl(userId);
+    res.json({ authUrl });
   } catch (error) {
-    console.error('Error checking Gmail auth status:', error);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Error in Gmail auth endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * @route   GET /api/gmail/debug-config
- * @desc    Debug OAuth configuration
- * @access  Public (only in development)
- */
-router.get('/debug-config', (req, res) => {
+// Gmail callback route (where Google redirects after auth)
+router.get('/callback', async (req, res) => {
   try {
-    // Check if we're in production
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(403).json({ error: 'Debug endpoint not available in production' });
+    const { code, state } = req.query;
+    const userId = state;
+    
+    console.log('Gmail callback received:', { code: !!code, state });
+    
+    if (!code || !userId) {
+      console.error('Missing code or userId in Gmail callback', { code: !!code, userId });
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=Missing+authorization+code+or+user+ID`);
     }
     
-    // Return OAuth configuration (mask the secret)
-    const clientId = process.env.GOOGLE_CLIENT_ID || 'Not set';
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET ? '****' + process.env.GOOGLE_CLIENT_SECRET.slice(-4) : 'Not set';
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'Not set';
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=User+not+found`);
+    }
     
-    res.status(200).json({
-      oauth: {
-        clientId,
-        clientSecret,
-        redirectUri
-      },
-      environment: {
-        nodeEnv: process.env.NODE_ENV || 'development',
-        clientUrl: process.env.CLIENT_URL || 'Not set'
-      }
+    try {
+      // Exchange the auth code for tokens
+      const tokens = await gmailService.getTokensFromCode(code);
+      
+      // Save tokens to user
+      user.gmailTokens = tokens;
+      user.gmailConnected = true;
+      await user.save();
+      
+      // Redirect back to receipts page with success
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=success`);
+    } catch (tokenError) {
+      console.error('Error getting tokens:', tokenError);
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=Failed+to+authenticate+with+Gmail`);
+    }
+  } catch (error) {
+    console.error('Error in Gmail callback:', error);
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard/receipts?auth=error&message=Server+error+during+authentication`);
+  }
+});
+
+// Fetch receipts from Gmail
+router.get('/fetch-receipts/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing user ID', 
+        message: 'User ID is required' 
+      });
+    }
+    
+    // Use the service to fetch receipts (with automatic token refresh)
+    const result = await gmailService.fetchReceiptsFromGmail(userId);
+    
+    // Return the result
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching Gmail receipts:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error',
+      message: 'Failed to fetch receipts from Gmail: ' + error.message
+    });
+  }
+});
+
+// Check Gmail connection status
+router.get('/status/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Check if the user has valid Gmail tokens
+    const hasValidTokens = user.gmailConnected && user.gmailTokens?.refresh_token;
+    
+    res.json({ 
+      connected: hasValidTokens,
+      lastSync: user.gmailLastSync
     });
   } catch (error) {
-    console.error('Error in debug-config route:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error checking Gmail status:', error);
+    res.status(500).json({ error: 'Failed to check Gmail connection status' });
+  }
+});
+
+// Disconnect Gmail
+router.post('/disconnect/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Remove Gmail tokens and reset connection status
+    user.gmailTokens = undefined;
+    user.googleRefreshToken = undefined;
+    user.gmailConnected = false;
+    await user.save();
+    
+    res.json({ success: true, message: 'Gmail disconnected successfully' });
+  } catch (error) {
+    console.error('Error disconnecting Gmail:', error);
+    res.status(500).json({ error: 'Failed to disconnect Gmail' });
   }
 });
 

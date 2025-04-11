@@ -1,215 +1,452 @@
 // File: ReceiptDetailModal.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import axiosInstance from '../../../api/axios';
 
-interface Attachment {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
+// You might need to import your Spinner component properly
+const Spinner: React.FC = () => (
+  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-500"></div>
+);
+
+interface ReceiptDetailModalProps {
+  userId: string;
+  emailId: string;
+  onClose: () => void;
 }
 
-interface EmailDetail {
-  id?: string;
-  emailId: string;
+interface ReceiptDetail {
+  _id: string;
+  vendor: string;
+  amount: number;
+  currency: string;
+  receiptDate: string;
+  orderNumber: string;
   subject: string;
   from: string;
   receivedAt: string;
   snippet: string;
-  content: string;
-  attachments?: Attachment[];
-  isReceipt?: boolean;
+  category: string;
+  tags: string[];
+  notes: string;
+  source?: string;
+  extractedText?: string;
+  fileUrl?: string;
+  fileKey?: string;
+  fileName?: string;
 }
 
-interface ReceiptDetailModalProps {
-  userId: string;
-  emailId: string | null;
-  onClose: () => void;
-}
+// Add helper function to ensure full S3 URLs
+const ensureFullS3Url = (url?: string): string | null => {
+  if (!url) return null;
+
+  try {
+    // If it's already a full URL but missing region, fix it
+    if (url.startsWith('http') && url.includes('s3.amazonaws.com')) {
+      return url.replace('s3.amazonaws.com', 's3.ap-south-1.amazonaws.com');
+    }
+
+    // If it's already a full URL with region, return it
+    if (url.startsWith('http')) return url;
+
+    // If it's a path like "uploads/file.jpg", convert to full S3 URL
+    if (url.startsWith('uploads/')) {
+      return `https://digital-receipt-manager.s3.ap-south-1.amazonaws.com/${url}`;
+    }
+
+    // If it's a path without "uploads/" prefix
+    if (!url.startsWith('/')) {
+      return `https://digital-receipt-manager.s3.ap-south-1.amazonaws.com/uploads/${url}`;
+    }
+
+    // If it's a local path starting with "/", try to serve it from your backend
+    return `http://localhost:5000${url.startsWith('/') ? url : `/${url}`}`;
+  } catch (error) {
+    console.error("Error in ensureFullS3Url:", error);
+    return null;
+  }
+};
 
 const ReceiptDetailModal: React.FC<ReceiptDetailModalProps> = ({ userId, emailId, onClose }) => {
+  const [receipt, setReceipt] = useState<ReceiptDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [emailDetails, setEmailDetails] = useState<EmailDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({
+    vendor: '',
+    amount: 0,
+    currency: '',
+    category: '',
+    notes: ''
+  });
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (!emailId) return;
-    
-    const fetchEmailDetails = async () => {
+    const fetchReceiptDetails = async () => {
       try {
         setLoading(true);
         setError(null);
+
+        console.log(`Fetching receipt details for userId=${userId}, emailId=${emailId}`);
         
-        console.log(`Fetching email details for ID: ${emailId}`);
-        const response = await axiosInstance.get(`/receipts/email/${userId}/${emailId}`);
-        console.log("Email details response:", response.data);
-        
-        if (response.data.success) {
-          setEmailDetails(response.data.email);
+        const response = await axiosInstance.get(`/api/receipts/${userId}/${emailId}`);
+
+        if (response.data && response.data.success) {
+          const receiptData = response.data.receipt;
+          setReceipt(receiptData);
+          
+          setFormData({
+            vendor: receiptData.vendor || '',
+            amount: receiptData.amount || 0,
+            currency: receiptData.currency || 'INR',
+            category: receiptData.category || 'Uncategorized',
+            notes: receiptData.notes || ''
+          });
         } else {
-          setError(response.data.message || 'Failed to fetch email details');
+          console.error("API returned error:", response.data?.message || "Unknown error");
+          setError(response.data?.message || 'Failed to load receipt details');
         }
       } catch (error: any) {
-        console.error('Error fetching email details:', error);
-        setError(`Error fetching email details: ${error.message || 'Unknown error'}`);
+        console.error("Error fetching receipt details:", error);
+        const statusCode = error.response?.status;
+        if (statusCode === 404) {
+          setError(`Receipt not found (404). Please try refreshing the page.`);
+        } else {
+          setError(`Failed to load receipt details. ${error.message || ''}`);
+        }
       } finally {
         setLoading(false);
       }
     };
-    
-    fetchEmailDetails();
+
+    fetchReceiptDetails();
   }, [userId, emailId]);
-  
-  // Function to download attachments
-  const downloadAttachment = (attachmentId: string, filename: string) => {
-    // Create a download link that points to our attachment endpoint
-    const downloadUrl = `${axiosInstance.defaults.baseURL}/receipts/email/${userId}/${emailId}/attachment/${attachmentId}`;
-    
-    // Create an anchor element and trigger download
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: name === 'amount' ? parseFloat(value) || 0 : value
+    });
   };
-  
-  if (!emailId) return null;
-  
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      
+      // Fix the endpoint URL - remove 'email/' to make it work for both email and uploaded receipts
+      const response = await axiosInstance.put(`/api/receipts/${userId}/${emailId}`, formData);
+      
+      if (response.data.success) {
+        setReceipt(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            vendor: formData.vendor || prev.vendor,
+            amount: formData.amount || prev.amount,
+            currency: formData.currency || prev.currency,
+            category: formData.category || prev.category,
+            notes: formData.notes || prev.notes
+          };
+        });
+        setEditMode(false);
+        setMessage('Receipt updated successfully');
+      } else {
+        setError(response.data.message || 'Failed to update receipt');
+      }
+    } catch (error: any) {
+      console.error('Error updating receipt:', error);
+      setError('An error occurred while updating the receipt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReprocess = async () => {
+    try {
+      setLoading(true);
+      setMessage('');
+      
+      // Fix the endpoint URL - remove 'email/' to make it work for both email and uploaded receipts
+      const response = await axiosInstance.post(`/api/receipts/${userId}/${emailId}/reprocess`);
+      
+      if (response.data.success && response.data.receipt) {
+        setReceipt(response.data.receipt);
+        setFormData({
+          vendor: response.data.receipt.vendor || '',
+          amount: response.data.receipt.amount || 0,
+          currency: response.data.receipt.currency || '',
+          category: response.data.receipt.category || '',
+          notes: response.data.receipt.notes || ''
+        });
+        setMessage('Receipt reprocessed successfully');
+      } else {
+        setError(response.data.message || 'Failed to reprocess receipt');
+      }
+    } catch (error: any) {
+      console.error('Error reprocessing receipt:', error);
+      setError('An error occurred while reprocessing the receipt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Modal header */}
-        <div className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold truncate">
-            {loading ? 'Loading receipt details...' : emailDetails?.subject || 'Receipt Details'}
-          </h2>
-          <button 
-            onClick={onClose}
-            className="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4">
+        <div className="fixed inset-0 bg-black opacity-50" onClick={onClose}></div>
         
-        {/* Modal content */}
-        <div className="p-6 flex-1 overflow-auto">
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-            </div>
-          ) : error ? (
-            <div className="bg-red-50 text-red-700 p-4 rounded-md">
-              {error}
-            </div>
-          ) : emailDetails ? (
-            <div className="space-y-6">
-              {/* Basic details */}
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <h3 className="font-medium text-gray-900">{emailDetails.subject}</h3>
-                  <span className="text-sm text-gray-500">
-                    {new Date(emailDetails.receivedAt).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600">From: {emailDetails.from}</p>
+        <div className="relative bg-white rounded-lg max-w-3xl w-full mx-auto p-6 shadow-xl">
+          <div className="flex justify-between items-center pb-3 border-b">
+            <h3 className="text-xl font-semibold text-gray-900">Receipt Details</h3>
+            <button
+              className="text-gray-400 hover:text-gray-500"
+              onClick={onClose}
+            >
+              <span className="sr-only">Close</span>
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="mt-4">
+            {loading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
               </div>
-              
-              {/* Email content */}
-              <div className="border-t border-gray-200 pt-4">
-                <h4 className="font-medium text-gray-700 mb-2">Email Content</h4>
-                <div 
-                  className="prose max-w-none overflow-auto p-4 bg-gray-50 rounded-md"
-                  dangerouslySetInnerHTML={{ __html: emailDetails.content }}
-                />
-              </div>
-              
-              {/* Attachments */}
-              {emailDetails.attachments && emailDetails.attachments.length > 0 && (
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="font-medium text-gray-700 mb-2">
-                    Attachments ({emailDetails.attachments.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {emailDetails.attachments.map(attachment => (
-                      <div 
-                        key={attachment.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
-                      >
-                        <div className="flex items-center">
-                          {/* Icon based on file type */}
-                          {attachment.mimeType.startsWith('image/') ? (
-                            <svg className="w-6 h-6 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          ) : attachment.mimeType === 'application/pdf' ? (
-                            <svg className="w-6 h-6 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-6 h-6 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                              {attachment.filename}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {Math.round(attachment.size / 1024)} KB
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => downloadAttachment(attachment.id, attachment.filename)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium focus:outline-none"
-                        >
-                          Download
-                        </button>
+            ) : error ? (
+              <div className="text-center py-4 text-red-500">{error}</div>
+            ) : receipt ? (
+              <div className="space-y-6">
+                {(receipt.fileUrl || receipt.fileKey) && (
+                  <div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Receipt Image</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex justify-center">
+                        <img
+                          src={ensureFullS3Url(receipt.fileUrl || receipt.fileKey) || ''}
+                          alt={receipt.fileName || 'Receipt Image'}
+                          className="max-h-64 object-contain rounded shadow-sm"
+                          onError={(e) => {
+                            const imgElement = e.currentTarget;
+                            if (imgElement.src !== ensureFullS3Url(receipt.fileKey || '') && receipt.fileKey) {
+                              // Try the fileKey URL if fileUrl failed
+                              imgElement.src = ensureFullS3Url(receipt.fileKey) || '';
+                            } else {
+                              // Use an inline SVG as fallback instead of external placeholder
+                              imgElement.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22300%22%20viewBox%3D%220%200%20400%20300%22%20fill%3D%22none%22%3E%3Crect%20width%3D%22400%22%20height%3D%22300%22%20fill%3D%22%23f3f4f6%22%2F%3E%3Ctext%20x%3D%22200%22%20y%3D%22150%22%20font-family%3D%22Arial%22%20font-size%3D%2216%22%20fill%3D%22%236b7280%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3EReceipt%20Image%20Not%20Available%3C%2Ftext%3E%3C%2Fsvg%3E';
+                              imgElement.alt = 'Receipt image not available';
+                            }
+                          }}
+                        />
                       </div>
-                    ))}
+                      {receipt.fileName && (
+                        <p className="text-sm text-center text-gray-500 mt-2">{receipt.fileName}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Receipt Information</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Vendor</p>
+                        <p className="text-sm text-gray-900">{receipt.vendor || 'Not detected'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Amount</p>
+                        <p className="text-sm text-gray-900">
+                          {receipt.amount 
+                            ? `${receipt.currency || 'INR'} ${receipt.amount.toFixed(2)}` 
+                            : 'Not detected'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Receipt Date</p>
+                        <p className="text-sm text-gray-900">
+                          {receipt.receiptDate 
+                            ? new Date(receipt.receiptDate).toLocaleDateString() 
+                            : 'Not detected'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Order/Receipt #</p>
+                        <p className="text-sm text-gray-900">{receipt.orderNumber || 'Not detected'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Category</p>
+                        <p className="text-sm text-gray-900">{receipt.category || 'Uncategorized'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Notes</p>
+                        <p className="text-sm text-gray-900">{receipt.notes || 'No notes'}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
-              
-              {/* Preview for image attachments */}
-              {emailDetails.attachments && emailDetails.attachments.some(a => a.mimeType?.startsWith('image/')) && (
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="font-medium text-gray-700 mb-2">Image Previews</h4>
+                
+                {receipt.extractedText && (
+                  <div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Extracted Text</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="max-h-48 overflow-y-auto text-sm text-gray-700 bg-white p-3 rounded border border-gray-200 whitespace-pre-wrap">
+                        {receipt.extractedText}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {receipt.source === 'email' && (
+                  <div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Email Information</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">From</p>
+                        <p className="text-sm text-gray-900">{receipt.from || 'Unknown sender'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Subject</p>
+                        <p className="text-sm text-gray-900">{receipt.subject || 'No subject'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Received</p>
+                        <p className="text-sm text-gray-900">
+                          {receipt.receivedAt 
+                            ? new Date(receipt.receivedAt).toLocaleString() 
+                            : 'Unknown date'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-end space-x-3 pt-4 border-t">
+                  <button
+                    type="button"
+                    onClick={handleReprocess}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    Reprocess Receipt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditMode(true)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Edit Details
+                  </button>
+                </div>
+                
+                {message && (
+                  <div className="mt-4 p-3 bg-green-50 text-green-800 rounded-md">
+                    {message}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">Receipt not found</div>
+            )}
+          </div>
+          
+          {editMode && receipt && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+              <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Edit Receipt Details</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Vendor</label>
+                    <input
+                      type="text"
+                      name="vendor"
+                      value={formData.vendor}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
+                  </div>
+                  
                   <div className="grid grid-cols-2 gap-4">
-                    {emailDetails.attachments
-                      .filter(a => a.mimeType?.startsWith('image/'))
-                      .map(attachment => (
-                        <div key={`preview-${attachment.id}`} className="relative">
-                          <img
-                            src={`${axiosInstance.defaults.baseURL}/receipts/email/${userId}/${emailId}/attachment/${attachment.id}`}
-                            alt={attachment.filename}
-                            className="rounded-md object-cover w-full h-48"
-                          />
-                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">
-                            {attachment.filename}
-                          </div>
-                        </div>
-                      ))}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Amount</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="amount"
+                        value={formData.amount}
+                        onChange={handleInputChange}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Currency</label>
+                      <select
+                        name="currency"
+                        value={formData.currency}
+                        onChange={handleInputChange}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                      >
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Category</label>
+                    <select
+                      name="category"
+                      value={formData.category}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    >
+                      <option value="Uncategorized">Uncategorized</option>
+                      <option value="Shopping">Shopping</option>
+                      <option value="Food & Dining">Food & Dining</option>
+                      <option value="Travel">Travel</option>
+                      <option value="Utilities">Utilities</option>
+                      <option value="Entertainment">Entertainment</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Education">Education</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleInputChange}
+                      rows={3}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
                   </div>
                 </div>
-              )}
+                
+                <div className="mt-5 flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditMode(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="text-center text-gray-500">No data available</div>
           )}
-        </div>
-        
-        {/* Modal footer */}
-        <div className="bg-gray-50 px-6 py-3 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
