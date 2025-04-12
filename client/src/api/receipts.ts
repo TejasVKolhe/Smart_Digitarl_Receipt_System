@@ -1,4 +1,5 @@
 import axios from "axios";
+import axiosInstance from './axios';
 
 const API_BASE_URL = "http://localhost:5000/api/receipts";
 
@@ -13,38 +14,66 @@ export const fetchStoredReceipts = async () => {
   }
 };
 
-// 🔹 Call this to fetch new receipts from Gmail & store in DB
-export const fetchReceiptsFromGmail = async (userId: string, token: string) => {
+// Interface for Gmail fetch result
+interface GmailFetchResult {
+  success: boolean;
+  message: string;
+  receipts?: any[];
+}
+
+/**
+ * Fetches receipts from Gmail
+ * @param userId - The user ID
+ * @param token - The user's auth token
+ * @returns Promise with fetch result
+ */
+export const fetchReceiptsFromGmail = async (
+  userId: string,
+  token?: string
+): Promise<GmailFetchResult> => {
   try {
-    console.log(`🔄 Requesting Gmail receipt fetch for user ${userId}`);
+    if (!userId) {
+      return { success: false, message: 'User ID is required' };
+    }
     
-    // Use mock response for now until backend is fixed
-    console.log('⚠️ Using mock response for Gmail fetching');
+    // Set auth token if provided
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
     
-    // Simulate delay for realistic behavior
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Use the correct endpoint that matches our backend route
+    const response = await axiosInstance.get(`/api/gmail/fetch-receipts/${userId}`, { headers });
     
-    // Return mock success response
+    // If the response is already in the expected format, return it directly
+    if (response.data && (response.data.success !== undefined)) {
+      return response.data;
+    }
+    
+    // Otherwise, format the response
     return {
       success: true,
-      message: 'Gmail connection successful',
-      receipts: []
+      message: `Successfully fetched ${response.data.receipts?.length || 0} receipts`,
+      receipts: response.data.receipts || []
     };
+  } catch (error: any) {
+    console.error('Error fetching receipts from Gmail:', error);
     
-    /* Original code - commented out until backend is fixed
-    const response = await axios.get(`${API_BASE_URL}/fetch/${userId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    return response.data;
-    */
-  } catch (error) {
-    console.error("Error fetching new receipts:", error);
-    return {
-      success: false,
-      message: 'Failed to fetch receipts from Gmail',
-      receipts: []
+    // Handle specific error responses
+    if (error.response?.status === 400 && error.response.data?.message) {
+      return { 
+        success: false, 
+        message: error.response.data.message
+      };
+    }
+    
+    if (error.response?.status === 401) {
+      return { 
+        success: false, 
+        message: 'Gmail authentication required. Please reconnect your account.'
+      };
+    }
+    
+    return { 
+      success: false, 
+      message: error.response?.data?.message || error.message || 'Failed to fetch receipts from Gmail'
     };
   }
 };
@@ -158,4 +187,9 @@ export const debugFetchRecentEmails = async (userId: string, token: string) => {
       emails: []
     };
   }
+};
+
+export default {
+  fetchReceiptsFromGmail,
+  // Other exported functions...
 };

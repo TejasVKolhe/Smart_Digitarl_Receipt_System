@@ -1,6 +1,29 @@
 require('dotenv').config(); // Ensure environment variables are loaded at the start
 
-// Add this near the top of your file
+// Add debug logging
+console.log('Environment variables check:');
+console.log('- GOOGLE_CLIENT_ID:', !!process.env.GOOGLE_CLIENT_ID);
+console.log('- GOOGLE_CLIENT_SECRET:', !!process.env.GOOGLE_CLIENT_SECRET);
+console.log('- GOOGLE_REDIRECT_URI:', !!process.env.GOOGLE_REDIRECT_URI);
+console.log('- GMAIL_CLIENT_ID:', !!process.env.GMAIL_CLIENT_ID); // Should be false initially
+console.log('- GMAIL_CLIENT_SECRET:', !!process.env.GMAIL_CLIENT_SECRET); // Should be false initially
+console.log('- GMAIL_REDIRECT_URI:', !!process.env.GMAIL_REDIRECT_URI); // Should be false initially
+
+// Manual mapping for Gmail variables - copying from Google to Gmail
+if (!process.env.GMAIL_CLIENT_ID && process.env.GOOGLE_CLIENT_ID) {
+  process.env.GMAIL_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  process.env.GMAIL_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+  process.env.GMAIL_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+  
+  console.log('Mapped Google variables to Gmail variables');
+  console.log('- GMAIL_CLIENT_ID (after mapping):', !!process.env.GMAIL_CLIENT_ID);
+}
+
+// Add some debug logging to verify env vars are loaded
+console.log('Environment check:');
+console.log('GMAIL_CLIENT_ID exists:', !!process.env.GMAIL_CLIENT_ID);
+console.log('GMAIL_CLIENT_SECRET exists:', !!process.env.GMAIL_CLIENT_SECRET);
+console.log('GMAIL_REDIRECT_URI exists:', !!process.env.GMAIL_REDIRECT_URI);
 
 // Ensure tokens directory exists
 const fs = require('fs');

@@ -13,36 +13,15 @@ interface User {
 
 const SettingsPage: React.FC = () => {
     const navigate = useNavigate();
-    // Get stored user data safely
-    const getStoredUser = (): User => {
-        try {
-            const stored = localStorage.getItem('user');
-            if (stored) {
-                return JSON.parse(stored);
-            }
-        } catch (e) {
-            console.error('Failed to parse user from localStorage', e);
-        }
-        return { username: '', email: '', id: '' };
-    };
-    
-    const [user, setUser] = useState<User>(getStoredUser());
+    // Initialize user state directly from localStorage - as in your working version
+    const [user, setUser] = useState<User>(JSON.parse(localStorage.getItem('user') || '{"username":"", "email":""}'));
+    // Initialize form data using the user state - as in your working version
     const [formData, setFormData] = useState({
-        username: '',
-        email: '',
+        username: user.username,
+        email: user.email,
         password: '',
         confirmPassword: ''
     });
-    
-    // Update form data when user changes
-    useEffect(() => {
-        setFormData(prev => ({
-            ...prev,
-            username: user.username || '',
-            email: user.email || ''
-        }));
-    }, [user]);
-
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({
@@ -55,20 +34,18 @@ const SettingsPage: React.FC = () => {
         // Fetch fresh user data
         const fetchUser = async () => {
             try {
-                console.log('Fetching user data...');
-                const response = await axiosInstance.get('/api/auth/current');
-                
-                const userData = response.data.user || response.data;
+                // FIXED: Changed from '/api/auth/current' to '/auth/current'
+                const response = await axiosInstance.get('/auth/current');
+                const userData = response.data.user;
                 setUser(userData);
                 localStorage.setItem('user', JSON.stringify(userData));
             } catch (error) {
                 console.error('Error fetching user data:', error);
-                // Do NOT redirect or unmount on auth errors - just use stored data
+                // If fetch fails, we still have user data from localStorage
             }
         };
         
         fetchUser();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const validateForm = () => {
@@ -112,8 +89,8 @@ const SettingsPage: React.FC = () => {
                 ...(formData.password && { password: formData.password })
             };
 
-            // Fix the URL by adding the /api prefix
-            const response = await axiosInstance.put('/api/auth/profile', payload);
+            // FIXED: Changed from '/api/auth/profile' to '/auth/profile'
+            const response = await axiosInstance.put('/auth/profile', payload);
             
             // Update local storage and state
             const updatedUser = { ...user, ...response.data.user };

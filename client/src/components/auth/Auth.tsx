@@ -73,6 +73,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
     setMessage('');
     setError(''); // Clear any previous errors
 
+<<<<<<< HEAD
     const token = localStorage.getItem('token');
 try {
   const response = await axiosInstance.post(
@@ -82,6 +83,33 @@ try {
       headers: {
         Authorization: token ? `Bearer ${token}` : '', // Add the token if it exists
       },
+=======
+    try {
+      const response = await axiosInstance.post(
+        isLogin ? 'api/auth/login' : 'api/auth/register',
+        isLogin ? { email, password } : { email, password, username }
+      );
+
+      if (response?.data?.user) {
+        // Store token in localStorage for authentication
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+
+        setMessage(`Welcome, ${response.data.user.username}!`);
+        navigate('/dashboard'); // Now correctly used inside the component
+      }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+
+      if (error.response?.status === 409 && !isLogin) {
+        setMessage('An account with this email already exists. Please login instead.');
+        setIsLogin(true);
+      } else {
+        setError(error.response?.data?.message || 'An unexpected error occurred');
+      }
+    } finally {
+      setLoading(false);
+>>>>>>> manual-entry
     }
   );
 
@@ -107,7 +135,6 @@ try {
 }
   };
 
-
   const handleGoogleLogin = async (response: any) => {
     console.log("Google Login Response:", response);
 
@@ -124,16 +151,17 @@ try {
         token: response.credential,
       });
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      if (res?.data?.user) {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("user", JSON.stringify(res.data.user));
 
-      navigate("/dashboard");
+        navigate("/dashboard");
+      }
     } catch (error) {
       console.error("Google login error:", error);
       setMessage("Google authentication failed");
     }
   };
-  
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
