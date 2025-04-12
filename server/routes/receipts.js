@@ -328,4 +328,42 @@ router.post('/:userId/:receiptId/reprocess', async (req, res) => {
   }
 });
 
+// POST /api/receipts/:userId/manual - Create a manual receipt
+router.post('/:userId/manual', async (req, res) => {
+  console.log('Manual receipt creation request received:', req.body);
+  try {
+    const { userId } = req.params;
+    const {
+      fileName,
+      amount,
+      currency,
+      vendor,
+      orderNumber,
+      receiptDate,
+      category,
+      notes,
+    } = req.body;
+
+    // Create a new receipt with the provided data
+    const newReceipt = new Receipt({
+      userId,
+      fileName,
+      source: 'manual', // Set source to 'manual'
+      amount,
+      currency,
+      vendor,
+      orderNumber,
+      receiptDate,
+      category,
+      notes,
+    });
+
+    await newReceipt.save();
+    res.status(201).json(newReceipt);
+  } catch (error) {
+    console.error('Error creating manual receipt:', error);
+    res.status(500).json({ error: 'Failed to create receipt' });
+  }
+});
+
 module.exports = router;

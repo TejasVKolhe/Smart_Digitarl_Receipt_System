@@ -1,4 +1,3 @@
-// server/models/Receipt.js
 const mongoose = require('mongoose');
 
 const ReceiptSchema = new mongoose.Schema({
@@ -7,37 +6,42 @@ const ReceiptSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  // For uploaded receipts
   fileName: { type: String, required: true },
+
   fileKey: {
     type: String,
-    required: function() {
-      // Only require fileKey for uploaded receipts, not for email receipts
-      return this.source === 'upload';
+    validate: {
+      validator: function (v) {
+        if (this.source === 'upload') return !!v;
+        return true;
+      },
+      message: 'fileKey is required for uploaded receipts'
     }
   },
+
   fileUrl: String,
   uploadedAt: { type: Date, default: Date.now },
-  // For email receipts
+
   source: {
     type: String,
-    enum: ['upload', 'email', 'scan'],
+    enum: ['upload', 'email', 'scan', 'manual'],
     default: 'upload'
   },
+
   emailId: String,
   subject: String,
   from: String,
   snippet: String,
   content: String,
   receivedAt: Date,
-  // Add email metadata for Gmail receipts
+
   emailMetadata: {
     emailId: String,
     sender: String,
     subject: String,
     receivedDate: String
   },
-  // Common fields
+
   amount: {
     type: Number,
     default: null
