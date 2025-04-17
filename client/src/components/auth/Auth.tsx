@@ -113,7 +113,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ setIsAuthenticated }) => {
       const decoded: any = jwtDecode(response.credential);
       console.log("Decoded User:", decoded);
 
-      const res = await axiosInstance.post("/auth/google", {
+      const res = await axiosInstance.post("/api/auth/google", {
         token: response.credential,
       });
 

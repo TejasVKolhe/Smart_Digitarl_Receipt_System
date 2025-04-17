@@ -53,14 +53,10 @@ const Dashboard: React.FC = () => {
   
   return (
     <DashboardLayout onLogout={handleLogout} user={user}>
+      {/* Welcome Header - Removed logout button */}
       <header className="flex justify-between items-center p-4 bg-gradient-to-r from-indigo-600 to-purple-600 shadow-xl rounded-lg">
-        <div className="text-white font-semibold text-lg">{user.username}</div>
-        <button 
-          onClick={handleLogout} 
-          className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg shadow-md"
-        >
-          Logout
-        </button>
+        <div className="text-white font-semibold text-lg">Welcome, {user.username}</div>
+        <div className="text-white text-sm">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
       </header>
 
       {/* Profile Section */}
