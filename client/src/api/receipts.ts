@@ -39,8 +39,14 @@ export const fetchReceiptsFromGmail = async (
     // Set auth token if provided
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     
-    // Use the correct endpoint that matches our backend route
-    const response = await axiosInstance.get(`/api/gmail/fetch-receipts/${userId}`, { headers });
+    // Use the correct endpoint with increased timeout
+    const response = await axiosInstance.get(
+      `/api/gmail/fetch-receipts/${userId}?limit=50&_t=${new Date().getTime()}`, 
+      { 
+        headers,
+        timeout: 60000 // Increase timeout to 60 seconds
+      }
+    );
     
     // If the response is already in the expected format, return it directly
     if (response.data && (response.data.success !== undefined)) {
@@ -55,6 +61,13 @@ export const fetchReceiptsFromGmail = async (
     };
   } catch (error: any) {
     console.error('Error fetching receipts from Gmail:', error);
+    
+    if (error.code === 'ECONNABORTED') {
+      return {
+        success: false,
+        message: 'Request timed out. Processing emails is taking longer than expected. Try again with fewer emails.'
+      };
+    }
     
     // Handle specific error responses
     if (error.response?.status === 400 && error.response.data?.message) {

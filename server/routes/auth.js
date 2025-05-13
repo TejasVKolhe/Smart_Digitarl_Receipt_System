@@ -25,20 +25,19 @@ router.post('/register', async (req, res) => {
     const { email, password, username } = req.body;
 
     // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
+    let existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(409).json({ message: 'User already exists' });
     }
-
-    // Hash password before saving
+    
+    // Create user with hashed password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user
-    const newUser = new User({
+    
+    const user = new User({
       username,
       email,
-      password: hashedPassword // Use the hashed password here
+      password: hashedPassword// Use the hashed password here
     });
 
     // Save user
@@ -113,65 +112,92 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// @route   POST /api/auth/google
-// @desc    Login/register with Google
-// @access  Public
+// This is where your Google auth route is likely located
+
 router.post('/google', async (req, res) => {
   try {
     const { token } = req.body;
-    
-    // Verify token
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
     
-    const { email, name, sub: googleId } = ticket.getPayload();
+    const { email, name, picture } = ticket.getPayload();
     
-    // Check if user already exists
+    // First check if user already exists with this email
     let user = await User.findOne({ email });
     
-    if (!user) {
-      // Generate random password for the user
-      const randomPassword = Math.random().toString(36).slice(-8);
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(randomPassword, salt);
-      
-      // Create new user
-      user = new User({
-        username: name,
-        email,
-        password: hashedPassword,
-        googleId
+    if (user) {
+      // User exists, generate token and return
+      const authToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+        expiresIn: '7d',
       });
       
-      await user.save();
+      return res.json({
+        token: authToken,
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          profilePicture: user.profilePicture || picture
+        }
+      });
     }
     
-    // Create JWT token
-    const payload = {
-      id: user.id,
-      email: user.email
-    };
+    // User doesn't exist, create new user
+    const username = await generateUniqueUsername(name);
     
-    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET || 'jwt_secret', { 
-      expiresIn: '1d' 
+    // Create a user object with authProvider explicitly set to 'google'
+    user = new User({
+      email,
+      username,
+      profilePicture: picture,
+      authProvider: 'google',
+      // Do not include password field for Google users
     });
     
-    res.json({
-      success: true,
-      token: jwtToken,
+    await user.save();
+    
+    const authToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '7d',
+    });
+    
+    return res.json({
+      token: authToken,
       user: {
-        id: user.id,
+        id: user._id,
+        email: user.email,
         username: user.username,
-        email: user.email
+        profilePicture: user.profilePicture
       }
     });
-  } catch (err) {
-    console.error('Google auth error:', err);
-    res.status(500).json({ message: 'Google authentication failed' });
+    
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ message: 'Authentication failed' });
   }
 });
+
+// Helper function to generate unique username
+async function generateUniqueUsername(baseName) {
+  let username = baseName;
+  let counter = 1;
+  let isUnique = false;
+  
+  // Try to find a unique username
+  while (!isUnique) {
+    const existingUser = await User.findOne({ username });
+    if (!existingUser) {
+      isUnique = true;
+    } else {
+      // If username exists, append a number and try again
+      username = `${baseName}${counter}`;
+      counter++;
+    }
+  }
+  
+  return username;
+}
 
 // @route   GET /api/auth/google/callback
 // @desc    Handle Google OAuth callback

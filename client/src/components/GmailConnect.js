@@ -30,12 +30,6 @@ const GmailConnect = ({ userId, onEmailsFetched }) => {
   
   const handleConnectGmail = async () => {
     try {
-      // In a real implementation, you would:
-      // 1. Get the auth URL from your backend
-      // 2. Open a popup or redirect to this URL
-      // 3. Handle the OAuth callback
-      
-      // For now, we'll simulate this with a prompt for the auth code
       const authCode = prompt('Enter your Gmail authorization code (for demo purposes):');
       
       if (!authCode) return;

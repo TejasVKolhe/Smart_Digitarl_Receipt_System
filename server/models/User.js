@@ -14,13 +14,23 @@ const UserSchema = new Schema({
     required: true,
     unique: true
   },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
+  },
   password: {
     type: String,
-    required: true
+    required: function() {
+      return this.authProvider === 'local' || !this.authProvider;
+    }
   },
   date: {
     type: Date,
     default: Date.now
+  },
+  profilePicture: {
+    type: String
   },
   gmailConnection: {
     tokens: {

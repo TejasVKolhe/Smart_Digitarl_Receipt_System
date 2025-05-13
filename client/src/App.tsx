@@ -47,15 +47,11 @@ axios.interceptors.response.use(
   error => {
     // Check if the error is due to an unauthorized request (401)
     if (error.response && error.response.status === 401) {
-      // Clear local storage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       
-      // Show an error toast
       toast.error('Session expired. Please log in again.');
-      
-      // Redirect to the login page
-      window.location.href = '/';
+            window.location.href = '/';
     }
     return Promise.reject(error);
   }
@@ -77,14 +73,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Set axios default headers for all requests
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setIsAuthenticated(true);
       
       // Verify the token is still valid (optional)
       const verifyToken = async () => {
         try {
-          // You can add an API call here to verify the token if needed
           console.log('Token found in localStorage');
         } catch (error) {
           console.error('Token verification failed:', error);
