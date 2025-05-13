@@ -86,17 +86,18 @@ const SettingsPage: React.FC = () => {
             const payload = {
                 username: formData.username,
                 email: formData.email,
-                ...(formData.password && { password: formData.password })
+                ...(formData.password && { password: formData.password }) // Only include password if it's provided
             };
 
-            // FIXED: Changed from '/api/auth/profile' to '/auth/profile'
-            const response = await axiosInstance.put('/auth/profile', payload);
-            
+            console.log('Payload:', payload); // Debugging
+
+            const response = await axiosInstance.put('/api/auth/profile', payload);
+
             // Update local storage and state
             const updatedUser = { ...user, ...response.data.user };
             localStorage.setItem('user', JSON.stringify(updatedUser));
             setUser(updatedUser);
-            
+
             setMessage('Profile updated successfully!');
             setTimeout(() => setMessage(''), 3000);
         } catch (error: any) {
